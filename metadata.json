@@ -1,0 +1,6 @@
+{
+  "name": "SaveBox",
+  "description": "SaveBox – Professional Media Downloader & Offline Media Player by Traxxion Tech (Vincent Ganiza)",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
