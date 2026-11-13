@@ -10,6 +10,8 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import com.example.data.local.DownloadDao
 import com.example.data.local.DownloadEntity
+import com.example.data.local.MediaMetadataDao
+import com.example.data.local.MediaMetadataEntity
 import com.example.data.local.PlaylistDao
 import com.example.data.local.PlaylistEntity
 import com.example.data.local.PlaylistTrackCrossRef
@@ -34,6 +36,7 @@ import java.util.UUID
 class DownloadRepository(
     private val context: Context,
     private val downloadDao: DownloadDao,
+    private val mediaMetadataDao: MediaMetadataDao,
     private val searchHistoryDao: SearchHistoryDao,
     private val playlistDao: PlaylistDao,
     private val storageManager: StorageManager
@@ -48,6 +51,27 @@ class DownloadRepository(
     val recentlyPlayed: Flow<List<DownloadEntity>> = downloadDao.observeRecentlyPlayed()
     val recentSearches: Flow<List<SearchHistoryEntity>> = searchHistoryDao.observeRecentSearches()
     val playlists: Flow<List<PlaylistWithTracks>> = playlistDao.observePlaylistsWithTracks()
+    val allMediaMetadata: Flow<List<MediaMetadataEntity>> = mediaMetadataDao.observeAllMetadata()
+
+    suspend fun saveAnalyzedMetadata(analyzed: AnalyzedMedia) {
+        val primaryFormat = analyzed.formats.firstOrNull()
+        mediaMetadataDao.upsert(
+            MediaMetadataEntity(
+                url = analyzed.sourceUrl,
+                title = analyzed.title,
+                filePath = null,
+                downloadStatus = "ANALYZED",
+                platform = analyzed.platform.name,
+                mediaType = primaryFormat?.mediaType?.name ?: "VIDEO",
+                author = analyzed.author,
+                thumbnailUrl = analyzed.thumbnailUrl,
+                durationMs = analyzed.durationMs,
+                durationText = analyzed.durationText,
+                qualityLabel = primaryFormat?.label,
+                fileSizeBytes = primaryFormat?.estimatedSizeBytes ?: 0L
+            )
+        )
+    }
 
     suspend fun enqueueDownload(
         analyzed: AnalyzedMedia,
@@ -79,6 +103,24 @@ class DownloadRepository(
             workId = workTag
         )
         val insertedId = downloadDao.insert(entity)
+
+        mediaMetadataDao.upsert(
+            MediaMetadataEntity(
+                url = analyzed.sourceUrl,
+                title = cleanTitle,
+                filePath = storageManager.getTargetFile(folderCategory, fileName).absolutePath,
+                downloadStatus = "QUEUED",
+                platform = analyzed.platform.name,
+                mediaType = format.mediaType.name,
+                author = analyzed.author,
+                thumbnailUrl = analyzed.thumbnailUrl,
+                durationMs = analyzed.durationMs,
+                durationText = analyzed.durationText,
+                qualityLabel = format.label,
+                fileSizeBytes = format.estimatedSizeBytes ?: 0L
+            )
+        )
+
         scheduleWorker(insertedId, workTag)
         return insertedId
     }
@@ -107,12 +149,14 @@ class DownloadRepository(
 
     suspend fun pauseDownload(item: DownloadEntity) {
         downloadDao.markStatus(item.id, "PAUSED", null)
+        mediaMetadataDao.updateFileAndStatus(item.sourceUrl, item.localFilePath, "PAUSED")
         item.workId?.let { workManager.cancelUniqueWork(it) }
     }
 
     suspend fun resumeOrRetryDownload(item: DownloadEntity) {
         val uniqueName = item.workId ?: "savebox_dl_${UUID.randomUUID()}"
         downloadDao.update(item.copy(status = "QUEUED", errorMessage = null, workId = uniqueName))
+        mediaMetadataDao.updateFileAndStatus(item.sourceUrl, item.localFilePath, "QUEUED")
         scheduleWorker(item.id, uniqueName)
     }
 
@@ -122,6 +166,7 @@ class DownloadRepository(
             runCatching { File(path).delete() }
         }
         downloadDao.deleteById(item.id)
+        mediaMetadataDao.updateFileAndStatus(item.sourceUrl, null, "DELETED")
     }
 
     suspend fun toggleFavorite(item: DownloadEntity) {
@@ -147,6 +192,7 @@ class DownloadRepository(
             }
         }
         downloadDao.update(item.copy(title = trimmed, fileName = updatedFileName, localFilePath = updatedPath))
+        mediaMetadataDao.updateFileAndStatus(item.sourceUrl, updatedPath, item.status)
     }
 
     suspend fun updatePlaybackPosition(downloadId: Long, positionMs: Long, incrementPlayCount: Boolean) {

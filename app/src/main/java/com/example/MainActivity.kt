@@ -23,8 +23,10 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         extractSharedUrl(intent)
 
+        val appContainer = (application as SaveBoxApplication).container
+
         setContent {
-            val viewModel: MainViewModel = viewModel()
+            val viewModel: MainViewModel = viewModel(factory = appContainer.viewModelFactory)
             val settings by viewModel.settings.collectAsStateWithLifecycle()
 
             SaveBoxTheme(

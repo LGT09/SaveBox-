@@ -4,13 +4,8 @@ import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
-import com.example.data.download.DownloadRepository
-import com.example.data.download.StorageManager
-import com.example.data.local.SaveBoxDatabase
-import com.example.data.local.SettingsDataStore
-import com.example.data.remote.SaveBoxApiManager
-import com.example.data.status.StatusSaverRepository
-import com.example.player.MediaControllerManager
+import com.example.di.AppContainer
+import com.example.di.DefaultAppContainer
 
 class SaveBoxApplication : Application() {
 
@@ -19,50 +14,13 @@ class SaveBoxApplication : Application() {
         const val CHANNEL_PLAYBACK = "savebox_playback"
     }
 
-    lateinit var database: SaveBoxDatabase
-        private set
-    lateinit var settingsDataStore: SettingsDataStore
-        private set
-    lateinit var apiManager: SaveBoxApiManager
-        private set
-    lateinit var storageManager: StorageManager
-        private set
-    lateinit var downloadRepository: DownloadRepository
-        private set
-    lateinit var statusSaverRepository: StatusSaverRepository
-        private set
-    lateinit var mediaControllerManager: MediaControllerManager
+    lateinit var container: AppContainer
         private set
 
     override fun onCreate() {
         super.onCreate()
         createNotificationChannels()
-
-        database = SaveBoxDatabase.getInstance(this)
-        settingsDataStore = SettingsDataStore(this)
-        apiManager = SaveBoxApiManager()
-        storageManager = StorageManager(this).apply { ensureAllFolders() }
-
-        downloadRepository = DownloadRepository(
-            context = this,
-            downloadDao = database.downloadDao(),
-            searchHistoryDao = database.searchHistoryDao(),
-            playlistDao = database.playlistDao(),
-            storageManager = storageManager
-        )
-
-        statusSaverRepository = StatusSaverRepository(
-            context = this,
-            storageManager = storageManager,
-            downloadDao = database.downloadDao()
-        )
-
-        mediaControllerManager = MediaControllerManager(
-            context = this,
-            onPositionSaved = { id, pos, inc ->
-                downloadRepository.updatePlaybackPosition(id, pos, inc)
-            }
-        )
+        container = DefaultAppContainer(this)
     }
 
     private fun createNotificationChannels() {

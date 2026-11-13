@@ -4,13 +4,18 @@ import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.SaveBoxApplication
+import com.example.data.download.DownloadRepository
 import com.example.data.download.StorageManager
 import com.example.data.local.DownloadEntity
+import com.example.data.local.MediaMetadataEntity
 import com.example.data.local.PlaylistWithTracks
 import com.example.data.local.SearchHistoryEntity
+import com.example.data.local.SettingsDataStore
 import com.example.data.local.UserSettings
 import com.example.data.remote.ApiResult
+import com.example.data.remote.MediaApiService
+import com.example.data.remote.SaveBoxApiManager
+import com.example.data.status.StatusSaverRepository
 import com.example.model.AnalyzedMedia
 import com.example.model.AppThemeMode
 import com.example.model.LibraryFilter
@@ -25,6 +30,7 @@ import com.example.model.WhatsAppStatusItem
 import com.example.player.AudioEffectsManager
 import com.example.player.AudioPlayerState
 import com.example.player.EqualizerState
+import com.example.player.MediaControllerManager
 import com.example.player.SleepTimerOption
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -48,20 +54,24 @@ sealed class SearchUiState {
     data class Error(val message: String) : SearchUiState()
 }
 
-class MainViewModel(application: Application) : AndroidViewModel(application) {
-
-    private val app = application as SaveBoxApplication
-    private val apiManager = app.apiManager
-    private val downloadRepo = app.downloadRepository
-    private val storageManager = app.storageManager
-    private val statusRepo = app.statusSaverRepository
-    private val settingsStore = app.settingsDataStore
-    val mediaControllerManager = app.mediaControllerManager
+class MainViewModel(
+    application: Application,
+    private val apiManager: SaveBoxApiManager,
+    @Suppress("unused") val mediaApiService: MediaApiService,
+    private val downloadRepo: DownloadRepository,
+    private val storageManager: StorageManager,
+    private val statusRepo: StatusSaverRepository,
+    private val settingsStore: SettingsDataStore,
+    val mediaControllerManager: MediaControllerManager
+) : AndroidViewModel(application) {
 
     val settings: StateFlow<UserSettings> = settingsStore.settingsFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), UserSettings())
 
     val allDownloads: StateFlow<List<DownloadEntity>> = downloadRepo.allDownloads
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val mediaMetadataList: StateFlow<List<MediaMetadataEntity>> = downloadRepo.allMediaMetadata
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val completedDownloads: StateFlow<List<DownloadEntity>> = downloadRepo.completedDownloads
@@ -97,6 +107,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _analyzeState = MutableStateFlow<AnalyzeUiState>(AnalyzeUiState.Idle)
     val analyzeState: StateFlow<AnalyzeUiState> = _analyzeState.asStateFlow()
+
+    // In-App Browser state
+    private val _browserCurrentUrl = MutableStateFlow("https://www.google.com")
+    val browserCurrentUrl: StateFlow<String> = _browserCurrentUrl.asStateFlow()
+
+    private val _browserPendingUrl = MutableStateFlow<String?>(null)
+    val browserPendingUrl: StateFlow<String?> = _browserPendingUrl.asStateFlow()
 
     // Library filter/sort/view state
     private val _librarySearchQuery = MutableStateFlow("")
@@ -200,6 +217,34 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _snackbarMessage.value = msg
     }
 
+    fun detectPlatformForUrl(url: String): MediaPlatform = apiManager.detectPlatform(url)
+
+    fun updateBrowserCurrentUrl(url: String) {
+        _browserCurrentUrl.value = url
+    }
+
+    fun requestBrowserNavigate(urlOrQuery: String) {
+        _browserPendingUrl.value = resolveBrowserTarget(urlOrQuery)
+    }
+
+    fun consumeBrowserPendingUrl() {
+        _browserPendingUrl.value = null
+    }
+
+    fun resolveBrowserTarget(rawInput: String): String {
+        val trimmed = rawInput.trim()
+        if (trimmed.isEmpty()) return "https://www.google.com"
+        if (trimmed.startsWith("http://", true) || trimmed.startsWith("https://", true)) {
+            return trimmed
+        }
+        val looksLikeDomain = !trimmed.contains(" ") && trimmed.contains(".") && trimmed.length >= 4
+        return if (looksLikeDomain) {
+            "https://$trimmed"
+        } else {
+            "https://www.google.com/search?q=${Uri.encode(trimmed)}"
+        }
+    }
+
     fun updateUrlInput(value: String) {
         _urlInput.value = value
         _detectedPlatform.value = if (value.contains(".") || value.startsWith("http", true)) {
@@ -236,6 +281,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             downloadRepo.recordSearch(raw, SearchPlatformScope.ALL_LOCAL, isUrl = true)
             when (val result = apiManager.analyzeUrl(raw)) {
                 is ApiResult.Success -> {
+                    downloadRepo.saveAnalyzedMetadata(result.data)
                     _analyzeState.value = AnalyzeUiState.Success(result.data)
                 }
                 is ApiResult.Error -> {

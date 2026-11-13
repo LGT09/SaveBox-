@@ -8,15 +8,17 @@ import androidx.room.RoomDatabase
 @Database(
     entities = [
         DownloadEntity::class,
+        MediaMetadataEntity::class,
         SearchHistoryEntity::class,
         PlaylistEntity::class,
         PlaylistTrackCrossRef::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class SaveBoxDatabase : RoomDatabase() {
     abstract fun downloadDao(): DownloadDao
+    abstract fun mediaMetadataDao(): MediaMetadataDao
     abstract fun searchHistoryDao(): SearchHistoryDao
     abstract fun playlistDao(): PlaylistDao
 
@@ -30,7 +32,10 @@ abstract class SaveBoxDatabase : RoomDatabase() {
                     context.applicationContext,
                     SaveBoxDatabase::class.java,
                     "savebox_database.db"
-                ).build().also { INSTANCE = it }
+                )
+                    .fallbackToDestructiveMigration(dropAllTables = true)
+                    .build()
+                    .also { INSTANCE = it }
             }
         }
     }

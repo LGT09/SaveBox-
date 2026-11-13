@@ -10,7 +10,6 @@ import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
 import com.example.R
 import com.example.SaveBoxApplication
-import com.example.data.local.SaveBoxDatabase
 import com.example.model.MediaType
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -31,9 +30,11 @@ class DownloadWorker(
         if (downloadId <= 0L) return@withContext Result.failure()
 
         val app = applicationContext as SaveBoxApplication
-        val db = SaveBoxDatabase.getInstance(applicationContext)
+        val container = app.container
+        val db = container.database
         val dao = db.downloadDao()
-        val storage = app.storageManager
+        val metadataDao = db.mediaMetadataDao()
+        val storage = container.storageManager
 
         val entity = dao.getById(downloadId) ?: return@withContext Result.failure()
         if (entity.status == "PAUSED") return@withContext Result.success()
@@ -46,6 +47,7 @@ class DownloadWorker(
 
         try {
             dao.markStatus(downloadId, "DOWNLOADING", null)
+            metadataDao.updateFileAndStatus(entity.sourceUrl, targetFile.absolutePath, "DOWNLOADING")
 
             val requestBuilder = Request.Builder()
                 .url(entity.downloadUrl)
@@ -55,20 +57,22 @@ class DownloadWorker(
                 requestBuilder.header("Range", "bytes=$existingBytes-")
             }
 
-            app.apiManager.okHttpClient.newCall(requestBuilder.build()).execute().use { response ->
+            container.okHttpClient.newCall(requestBuilder.build()).execute().use { response ->
                 if (!response.isSuccessful && response.code != 206) {
-                    // Retry without Range if server rejected partial request (e.g. 416)
                     if (response.code == 416 && existingBytes > 0L) {
                         targetFile.delete()
                         dao.markStatus(downloadId, "FAILED", "Server rejected range; tap Retry to restart.")
+                        metadataDao.updateFileAndStatus(entity.sourceUrl, null, "FAILED")
                         return@withContext Result.failure()
                     }
                     dao.markStatus(downloadId, "FAILED", "Download error HTTP ${response.code}")
+                    metadataDao.updateFileAndStatus(entity.sourceUrl, null, "FAILED")
                     return@withContext Result.failure()
                 }
 
                 val body = response.body ?: run {
                     dao.markStatus(downloadId, "FAILED", "Empty media stream.")
+                    metadataDao.updateFileAndStatus(entity.sourceUrl, null, "FAILED")
                     return@withContext Result.failure()
                 }
 
@@ -86,6 +90,7 @@ class DownloadWorker(
                         while (true) {
                             if (isStopped) {
                                 dao.updateProgress(downloadId, downloaded, totalBytes, "PAUSED")
+                                metadataDao.updateFileAndStatus(entity.sourceUrl, targetFile.absolutePath, "PAUSED")
                                 return@withContext Result.success()
                             }
                             val read = input.read(buffer)
@@ -120,6 +125,7 @@ class DownloadWorker(
                     uri = mediaStoreUri?.toString(),
                     size = finalSize
                 )
+                metadataDao.updateFileAndStatus(entity.sourceUrl, targetFile.absolutePath, "COMPLETED")
                 showCompletedNotification(notificationId, entity.title)
                 Result.success()
             }
@@ -127,6 +133,7 @@ class DownloadWorker(
             val latest = dao.getById(downloadId)
             if (latest?.status != "PAUSED") {
                 dao.markStatus(downloadId, "FAILED", t.localizedMessage ?: "Download interrupted")
+                metadataDao.updateFileAndStatus(entity.sourceUrl, targetFile.absolutePath, "FAILED")
             }
             Result.failure()
         }

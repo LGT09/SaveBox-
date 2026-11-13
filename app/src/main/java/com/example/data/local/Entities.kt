@@ -1,5 +1,6 @@
 package com.example.data.local
 
+import androidx.room.ColumnInfo
 import androidx.room.Embedded
 import androidx.room.Entity
 import androidx.room.Index
@@ -7,13 +8,16 @@ import androidx.room.Junction
 import androidx.room.PrimaryKey
 import androidx.room.Relation
 
+/**
+ * Room entity storing download history, file paths, and live download status.
+ */
 @Entity(tableName = "downloads")
 data class DownloadEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val title: String,
     val fileName: String,
-    val sourceUrl: String,
-    val downloadUrl: String,
+    @ColumnInfo(name = "sourceUrl") val sourceUrl: String,
+    @ColumnInfo(name = "downloadUrl") val downloadUrl: String,
     val platform: String,
     val mediaType: String,
     val qualityLabel: String,
@@ -22,10 +26,10 @@ data class DownloadEntity(
     val durationMs: Long = 0L,
     val fileSizeBytes: Long = 0L,
     val downloadedBytes: Long = 0L,
-    val localFilePath: String? = null,
+    @ColumnInfo(name = "localFilePath") val localFilePath: String? = null,
     val localUri: String? = null,
     val folderCategory: String = "Downloads",
-    val status: String = "QUEUED",
+    @ColumnInfo(name = "status") val status: String = "QUEUED",
     val isFavorite: Boolean = false,
     val playCount: Int = 0,
     val lastPlayedAt: Long = 0L,
@@ -39,6 +43,30 @@ data class DownloadEntity(
             (downloadedBytes.toFloat() / fileSizeBytes.toFloat()).coerceIn(0f, 1f)
         } else if (status == "COMPLETED") 1f else 0f
 }
+
+/**
+ * Room entity storing analyzed media metadata alongside URL, title, file path, and download status.
+ */
+@Entity(
+    tableName = "media_metadata",
+    indices = [Index(value = ["url"], unique = true)]
+)
+data class MediaMetadataEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val url: String,
+    val title: String,
+    val filePath: String? = null,
+    val downloadStatus: String = "ANALYZED",
+    val platform: String,
+    val mediaType: String,
+    val author: String? = null,
+    val thumbnailUrl: String? = null,
+    val durationMs: Long = 0L,
+    val durationText: String? = null,
+    val qualityLabel: String? = null,
+    val fileSizeBytes: Long = 0L,
+    val updatedAt: Long = System.currentTimeMillis()
+)
 
 @Entity(tableName = "search_history")
 data class SearchHistoryEntity(

@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.filled.Storage
@@ -107,6 +108,7 @@ fun HomeScreen(
     onOpenSearch: (SearchPlatformScope) -> Unit,
     onOpenLibrary: () -> Unit,
     onOpenStatusSaver: () -> Unit,
+    onOpenBrowser: () -> Unit,
     onOpenAudioPlayer: () -> Unit,
     onPlayMedia: (DownloadEntity) -> Unit
 ) {
@@ -433,18 +435,18 @@ fun HomeScreen(
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     QuickActionTile(
+                        title = "Browser",
+                        subtitle = "Google & Web",
+                        icon = Icons.Filled.Public,
+                        modifier = Modifier.weight(1f),
+                        onClick = onOpenBrowser
+                    )
+                    QuickActionTile(
                         title = "Queue",
                         subtitle = "$activeQueueCount active",
                         icon = Icons.Filled.Download,
                         modifier = Modifier.weight(1f),
                         onClick = onOpenQueue
-                    )
-                    QuickActionTile(
-                        title = "Discover",
-                        subtitle = "YT & Music",
-                        icon = Icons.Filled.Search,
-                        modifier = Modifier.weight(1f),
-                        onClick = { onOpenSearch(SearchPlatformScope.YOUTUBE) }
                     )
                     QuickActionTile(
                         title = "Statuses",

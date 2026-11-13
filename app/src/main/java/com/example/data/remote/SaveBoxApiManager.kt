@@ -5,52 +5,22 @@ import com.example.model.AnalyzedMedia
 import com.example.model.MediaPlatform
 import com.example.model.SearchPlatformScope
 import com.example.model.SearchResultItem
-import com.google.gson.GsonBuilder
 import com.google.gson.JsonElement
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
-import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Response
-import retrofit2.Retrofit
-import retrofit2.converter.gson.GsonConverterFactory
-import java.util.concurrent.TimeUnit
 
 sealed class ApiResult<out T> {
     data class Success<T>(val data: T) : ApiResult<T>()
     data class Error(val message: String, val cause: Throwable? = null) : ApiResult<Nothing>()
 }
 
-class SaveBoxApiManager {
-
-    companion object {
-        const val BASE_URL = "https://nayan-video-downloader.vercel.app/"
-    }
-
-    val okHttpClient: OkHttpClient by lazy {
-        val logger = HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BASIC
-        }
-        OkHttpClient.Builder()
-            .connectTimeout(25, TimeUnit.SECONDS)
-            .readTimeout(45, TimeUnit.SECONDS)
-            .writeTimeout(25, TimeUnit.SECONDS)
-            .followRedirects(true)
-            .followSslRedirects(true)
-            .addInterceptor(logger)
-            .build()
-    }
-
-    private val apiService: NayanApiService by lazy {
-        val gson = GsonBuilder().setLenient().create()
-        Retrofit.Builder()
-            .baseUrl(BASE_URL)
-            .client(okHttpClient)
-            .addConverterFactory(GsonConverterFactory.create(gson))
-            .build()
-            .create(NayanApiService::class.java)
-    }
+class SaveBoxApiManager(
+    val okHttpClient: OkHttpClient,
+    private val apiService: MediaApiService
+) {
 
     // Extensible service registry allowing additional endpoints to be plugged in easily
     private val customHandlers = mutableMapOf<MediaPlatform, suspend (String) -> Response<JsonElement>>()

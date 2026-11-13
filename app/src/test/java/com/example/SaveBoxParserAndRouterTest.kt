@@ -1,20 +1,35 @@
 package com.example
 
+import com.example.data.remote.MediaApiService
 import com.example.data.remote.MediaResponseParser
 import com.example.data.remote.SaveBoxApiManager
 import com.example.model.MediaPlatform
 import com.example.model.MediaType
 import com.google.gson.JsonParser
+import okhttp3.OkHttpClient
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import retrofit2.Retrofit
+import retrofit2.converter.gson.GsonConverterFactory
 
 class SaveBoxParserAndRouterTest {
 
+    private fun createApiManager(): SaveBoxApiManager {
+        val client = OkHttpClient.Builder().build()
+        val service = Retrofit.Builder()
+            .baseUrl("https://nayan-video-downloader.vercel.app/")
+            .client(client)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+            .create(MediaApiService::class.java)
+        return SaveBoxApiManager(client, service)
+    }
+
     @Test
     fun detectPlatform_identifiesAllSupportedDomains() {
-        val manager = SaveBoxApiManager()
+        val manager = createApiManager()
         assertEquals(MediaPlatform.YOUTUBE, manager.detectPlatform("https://youtu.be/dQw4w9WgXcQ"))
         assertEquals(MediaPlatform.YOUTUBE_PLAYLIST, manager.detectPlatform("https://www.youtube.com/playlist?list=PL123"))
         assertEquals(MediaPlatform.TIKTOK, manager.detectPlatform("https://www.tiktok.com/@user/video/12345"))

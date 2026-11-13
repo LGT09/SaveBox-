@@ -66,6 +66,24 @@ interface DownloadDao {
 }
 
 @Dao
+interface MediaMetadataDao {
+    @Query("SELECT * FROM media_metadata ORDER BY updatedAt DESC")
+    fun observeAllMetadata(): Flow<List<MediaMetadataEntity>>
+
+    @Query("SELECT * FROM media_metadata WHERE url = :url LIMIT 1")
+    suspend fun getByUrl(url: String): MediaMetadataEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(metadata: MediaMetadataEntity): Long
+
+    @Query("UPDATE media_metadata SET filePath = :filePath, downloadStatus = :status, updatedAt = :updatedAt WHERE url = :url")
+    suspend fun updateFileAndStatus(url: String, filePath: String?, status: String, updatedAt: Long = System.currentTimeMillis())
+
+    @Query("DELETE FROM media_metadata")
+    suspend fun clearAll()
+}
+
+@Dao
 interface SearchHistoryDao {
     @Query("SELECT * FROM search_history ORDER BY timestamp DESC LIMIT 25")
     fun observeRecentSearches(): Flow<List<SearchHistoryEntity>>

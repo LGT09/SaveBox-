@@ -24,11 +24,13 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Smartphone
@@ -72,6 +74,7 @@ import com.example.model.MediaType
 import com.example.model.SearchPlatformScope
 import com.example.ui.components.AnimatedAuroraBackdrop
 import com.example.ui.screens.AudioPlayerScreen
+import com.example.ui.screens.BrowserScreen
 import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.LibraryScreen
 import com.example.ui.screens.MiniAudioPlayerBar
@@ -88,6 +91,7 @@ import java.io.File
 @Serializable
 sealed interface SaveBoxRoute {
     @Serializable data object Home : SaveBoxRoute
+    @Serializable data object Browser : SaveBoxRoute
     @Serializable data object Library : SaveBoxRoute
     @Serializable data object Search : SaveBoxRoute
     @Serializable data object StatusSaver : SaveBoxRoute
@@ -106,9 +110,9 @@ private data class NavTab(
 
 private val TopTabs = listOf(
     NavTab(SaveBoxRoute.Home, "Home", Icons.Filled.Home, Icons.Outlined.Home),
+    NavTab(SaveBoxRoute.Browser, "Browser", Icons.Filled.Public, Icons.Outlined.Public),
     NavTab(SaveBoxRoute.Library, "Library", Icons.Filled.VideoLibrary, Icons.Outlined.VideoLibrary),
     NavTab(SaveBoxRoute.Search, "Search", Icons.Filled.Search, Icons.Outlined.Search),
-    NavTab(SaveBoxRoute.StatusSaver, "Statuses", Icons.Filled.Smartphone, Icons.Outlined.Smartphone),
     NavTab(SaveBoxRoute.Settings, "Settings", Icons.Filled.Settings, Icons.Outlined.Settings)
 )
 
@@ -155,7 +159,6 @@ private fun SaveBoxMainApp(viewModel: MainViewModel) {
 
     var imagePreviewTarget by remember { mutableStateOf<DownloadEntity?>(null) }
 
-    // Request POST_NOTIFICATIONS on Android 13+ when entering main app
     val notificationPermLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { _ -> }
@@ -209,6 +212,11 @@ private fun SaveBoxMainApp(viewModel: MainViewModel) {
         }
     }
 
+    fun openInAppBrowser(url: String) {
+        viewModel.requestBrowserNavigate(url)
+        navigateToTab(SaveBoxRoute.Browser)
+    }
+
     AnimatedAuroraBackdrop {
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val useRail = maxWidth >= 680.dp && showNavigationChrome
@@ -235,6 +243,18 @@ private fun SaveBoxMainApp(viewModel: MainViewModel) {
                                 label = { Text(tab.label) }
                             )
                         }
+                        val statusSelected = backStackEntry?.destination?.hasRoute<SaveBoxRoute.StatusSaver>() == true
+                        NavigationRailItem(
+                            selected = statusSelected,
+                            onClick = { navigateToTab(SaveBoxRoute.StatusSaver) },
+                            icon = {
+                                Icon(
+                                    imageVector = if (statusSelected) Icons.Filled.Smartphone else Icons.Outlined.Smartphone,
+                                    contentDescription = "Statuses"
+                                )
+                            },
+                            label = { Text("Statuses") }
+                        )
                     }
                 }
 
@@ -299,8 +319,19 @@ private fun SaveBoxMainApp(viewModel: MainViewModel) {
                                     },
                                     onOpenLibrary = { navigateToTab(SaveBoxRoute.Library) },
                                     onOpenStatusSaver = { navigateToTab(SaveBoxRoute.StatusSaver) },
+                                    onOpenBrowser = { navigateToTab(SaveBoxRoute.Browser) },
                                     onOpenAudioPlayer = { navController.navigate(SaveBoxRoute.AudioPlayer) },
                                     onPlayMedia = { playMediaEntity(it) }
+                                )
+                            }
+
+                            composable<SaveBoxRoute.Browser> {
+                                BrowserScreen(
+                                    viewModel = viewModel,
+                                    onAnalyzePageUrl = { url ->
+                                        navigateToTab(SaveBoxRoute.Home)
+                                        viewModel.pasteAndAnalyze(url)
+                                    }
                                 )
                             }
 
@@ -323,11 +354,15 @@ private fun SaveBoxMainApp(viewModel: MainViewModel) {
                             }
 
                             composable<SaveBoxRoute.StatusSaver> {
+                                BackHandler { navigateToTab(SaveBoxRoute.Home) }
                                 StatusSaverScreen(viewModel = viewModel)
                             }
 
                             composable<SaveBoxRoute.Settings> {
-                                SettingsScreen(viewModel = viewModel)
+                                SettingsScreen(
+                                    viewModel = viewModel,
+                                    onOpenInAppBrowser = { url -> openInAppBrowser(url) }
+                                )
                             }
 
                             composable<SaveBoxRoute.Queue> {
