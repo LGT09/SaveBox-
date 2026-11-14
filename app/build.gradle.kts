@@ -5,6 +5,7 @@ plugins {
   alias(libs.plugins.kotlin.compose)
   alias(libs.plugins.kotlin.serialization)
   alias(libs.plugins.google.devtools.ksp)
+  alias(libs.plugins.hilt.android)
   alias(libs.plugins.secrets)
   alias(libs.plugins.google.services)
 }
@@ -109,11 +110,13 @@ dependencies {
   implementation(libs.androidx.media3.session)
   implementation(libs.androidx.media3.ui)
   implementation(libs.androidx.navigation.compose)
+  implementation(libs.androidx.hilt.navigation.compose)
   implementation(libs.androidx.room.ktx)
   implementation(libs.androidx.room.runtime)
   implementation(libs.androidx.work.runtime.ktx)
   implementation(libs.coil.compose)
   implementation(libs.converter.gson)
+  implementation(libs.hilt.android)
   // implementation(libs.converter.moshi)
   // implementation(libs.firebase.ai)
   // implementation(libs.firebase.firestore)
@@ -146,5 +149,6 @@ dependencies {
   debugImplementation(libs.androidx.compose.ui.test.manifest)
   debugImplementation(libs.androidx.compose.ui.tooling)
   "ksp"(libs.androidx.room.compiler)
+  "ksp"(libs.hilt.compiler)
   // "ksp"(libs.moshi.kotlin.codegen)
 }

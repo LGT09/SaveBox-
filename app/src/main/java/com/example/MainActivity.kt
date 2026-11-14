@@ -8,12 +8,14 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.navigation.SaveBoxRootShell
 import com.example.ui.theme.SaveBoxTheme
 import com.example.ui.viewmodel.MainViewModel
+import dagger.hilt.android.AndroidEntryPoint
 
+@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
     private var incomingSharedUrl by mutableStateOf<String?>(null)
@@ -23,10 +25,8 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         extractSharedUrl(intent)
 
-        val appContainer = (application as SaveBoxApplication).container
-
         setContent {
-            val viewModel: MainViewModel = viewModel(factory = appContainer.viewModelFactory)
+            val viewModel: MainViewModel = hiltViewModel()
             val settings by viewModel.settings.collectAsStateWithLifecycle()
 
             SaveBoxTheme(

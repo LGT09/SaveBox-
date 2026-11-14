@@ -10,11 +10,25 @@ import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
 import com.example.R
 import com.example.SaveBoxApplication
+import com.example.data.local.SaveBoxDatabase
 import com.example.model.MediaType
+import dagger.hilt.EntryPoint
+import dagger.hilt.InstallIn
+import dagger.hilt.android.EntryPointAccessors
+import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.FileOutputStream
+
+@EntryPoint
+@InstallIn(SingletonComponent::class)
+interface DownloadWorkerEntryPoint {
+    fun okHttpClient(): OkHttpClient
+    fun database(): SaveBoxDatabase
+    fun storageManager(): StorageManager
+}
 
 class DownloadWorker(
     appContext: Context,
@@ -29,12 +43,15 @@ class DownloadWorker(
         val downloadId = inputData.getLong(KEY_DOWNLOAD_ID, -1L)
         if (downloadId <= 0L) return@withContext Result.failure()
 
-        val app = applicationContext as SaveBoxApplication
-        val container = app.container
-        val db = container.database
+        val entryPoint = EntryPointAccessors.fromApplication(
+            applicationContext,
+            DownloadWorkerEntryPoint::class.java
+        )
+        val db = entryPoint.database()
         val dao = db.downloadDao()
         val metadataDao = db.mediaMetadataDao()
-        val storage = container.storageManager
+        val storage = entryPoint.storageManager()
+        val okHttpClient = entryPoint.okHttpClient()
 
         val entity = dao.getById(downloadId) ?: return@withContext Result.failure()
         if (entity.status == "PAUSED") return@withContext Result.success()
@@ -57,7 +74,7 @@ class DownloadWorker(
                 requestBuilder.header("Range", "bytes=$existingBytes-")
             }
 
-            container.okHttpClient.newCall(requestBuilder.build()).execute().use { response ->
+            okHttpClient.newCall(requestBuilder.build()).execute().use { response ->
                 if (!response.isSuccessful && response.code != 206) {
                     if (response.code == 416 && existingBytes > 0L) {
                         targetFile.delete()

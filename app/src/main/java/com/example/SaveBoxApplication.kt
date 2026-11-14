@@ -4,9 +4,9 @@ import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
-import com.example.di.AppContainer
-import com.example.di.DefaultAppContainer
+import dagger.hilt.android.HiltAndroidApp
 
+@HiltAndroidApp
 class SaveBoxApplication : Application() {
 
     companion object {
@@ -14,13 +14,9 @@ class SaveBoxApplication : Application() {
         const val CHANNEL_PLAYBACK = "savebox_playback"
     }
 
-    lateinit var container: AppContainer
-        private set
-
     override fun onCreate() {
         super.onCreate()
         createNotificationChannels()
-        container = DefaultAppContainer(this)
     }
 
     private fun createNotificationChannels() {
