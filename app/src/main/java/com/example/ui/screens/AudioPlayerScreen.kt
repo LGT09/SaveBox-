@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Equalizer
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Lyrics
 import androidx.compose.material.icons.filled.Pause
@@ -72,14 +73,28 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.Player
 import coil.compose.AsyncImage
 import com.example.R
+import com.example.data.local.DownloadEntity
+import com.example.model.VisualizerStyle
 import com.example.player.SleepTimerOption
 import com.example.ui.components.AnimatedAudioVisualizer
 import com.example.ui.components.FormatUtils
-import com.example.ui.components.LiquidGlassCard
-import com.example.ui.theme.AuroraViolet
-import com.example.ui.theme.ElectricCyan
+import com.example.ui.components.GlassCard
 import com.example.ui.theme.EmeraldMint
 import com.example.ui.viewmodel.MainViewModel
+import java.io.File
+
+private fun resolveAudioArtworkModel(track: DownloadEntity): Any {
+    val thumb = track.thumbnailUrl
+    if (!thumb.isNullOrBlank()) {
+        if (thumb.startsWith("/")) {
+            val file = File(thumb)
+            if (file.exists()) return file
+        } else {
+            return thumb
+        }
+    }
+    return R.drawable.img_album_placeholder
+}
 
 @Composable
 fun MiniAudioPlayerBar(
@@ -89,8 +104,9 @@ fun MiniAudioPlayerBar(
 ) {
     val state by viewModel.audioPlayerState.collectAsStateWithLifecycle()
     val track = state.currentTrack ?: return
+    val coverModel = remember(track.id, track.thumbnailUrl) { resolveAudioArtworkModel(track) }
 
-    LiquidGlassCard(
+    GlassCard(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 6.dp),
@@ -113,7 +129,7 @@ fun MiniAudioPlayerBar(
                 )
             } else {
                 AsyncImage(
-                    model = track.thumbnailUrl ?: R.drawable.img_album_placeholder,
+                    model = coverModel,
                     contentDescription = track.title,
                     placeholder = painterResource(id = R.drawable.img_album_placeholder),
                     error = painterResource(id = R.drawable.img_album_placeholder),
@@ -134,7 +150,7 @@ fun MiniAudioPlayerBar(
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = track.author ?: track.platform,
+                    text = track.author ?: track.sourceHost,
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1
@@ -150,7 +166,11 @@ fun MiniAudioPlayerBar(
                 modifier = Modifier
                     .size(42.dp)
                     .clip(CircleShape)
-                    .background(Brush.linearGradient(listOf(ElectricCyan, AuroraViolet)))
+                    .background(
+                        Brush.linearGradient(
+                            listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.secondary)
+                        )
+                    )
             ) {
                 Icon(
                     imageVector = if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
@@ -175,6 +195,7 @@ fun AudioPlayerScreen(
     val state by viewModel.audioPlayerState.collectAsStateWithLifecycle()
     val eqState by viewModel.equalizerState.collectAsStateWithLifecycle()
     val favorites by viewModel.favoriteDownloads.collectAsStateWithLifecycle()
+    val settings by viewModel.settings.collectAsStateWithLifecycle()
 
     var showEqSheet by remember { mutableStateOf(false) }
     var showQueueSheet by remember { mutableStateOf(false) }
@@ -190,7 +211,7 @@ fun AudioPlayerScreen(
     val infiniteTransition = rememberInfiniteTransition(label = "art_glow")
     val glowAlpha by infiniteTransition.animateFloat(
         initialValue = 0.25f,
-        targetValue = 0.55f,
+        targetValue = 0.60f,
         animationSpec = infiniteRepeatable(tween(2200, easing = LinearEasing), RepeatMode.Reverse),
         label = "glow_alpha"
     )
@@ -234,18 +255,27 @@ fun AudioPlayerScreen(
                         )
                     }
                 }
-                IconButton(onClick = { showLyrics = !showLyrics }) {
-                    Icon(
-                        imageVector = Icons.Filled.Lyrics,
-                        contentDescription = "Lyrics",
-                        tint = if (showLyrics) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                Row {
+                    IconButton(onClick = { viewModel.cycleVisualizerStyle() }) {
+                        Icon(
+                            imageVector = Icons.Filled.GraphicEq,
+                            contentDescription = "Cycle Visualizer Style",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    IconButton(onClick = { showLyrics = !showLyrics }) {
+                        Icon(
+                            imageVector = Icons.Filled.Lyrics,
+                            contentDescription = "Lyrics",
+                            tint = if (showLyrics) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
 
             if (track == null) {
                 Spacer(modifier = Modifier.height(48.dp))
-                LiquidGlassCard(cornerRadius = 26.dp, contentPadding = 24.dp) {
+                GlassCard(cornerRadius = 26.dp, contentPadding = 24.dp) {
                     Column(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalAlignment = Alignment.CenterHorizontally
@@ -261,7 +291,7 @@ fun AudioPlayerScreen(
                         Spacer(modifier = Modifier.height(16.dp))
                         Text("SaveBox Audio Studio", style = MaterialTheme.typography.titleLarge)
                         Text(
-                            text = "Play any downloaded audio or video track from your SaveBox Library to unlock Equalizer, Sleep Timer, and Visualizer.",
+                            text = "Play any song from Library or YouTube Search to unlock Cover Art, Equalizer, Sleep Timer, and Visualizers.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -270,14 +300,14 @@ fun AudioPlayerScreen(
                 return@Column
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
             // Artwork or Lyrics View
             if (showLyrics) {
-                LiquidGlassCard(
+                GlassCard(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(250.dp),
+                        .height(225.dp),
                     cornerRadius = 26.dp,
                     contentPadding = 18.dp
                 ) {
@@ -291,15 +321,16 @@ fun AudioPlayerScreen(
                     )
                 }
             } else {
+                val artworkModel = remember(track.id, track.thumbnailUrl) { resolveAudioArtworkModel(track) }
                 Box(
                     modifier = Modifier
-                        .size(240.dp)
+                        .size(224.dp)
                         .clip(RoundedCornerShape(30.dp))
                         .background(
                             Brush.radialGradient(
                                 listOf(
-                                    ElectricCyan.copy(alpha = if (state.isPlaying) glowAlpha else 0.18f),
-                                    AuroraViolet.copy(alpha = 0.2f)
+                                    MaterialTheme.colorScheme.primary.copy(alpha = if (state.isPlaying) glowAlpha else 0.22f),
+                                    MaterialTheme.colorScheme.secondary.copy(alpha = 0.24f)
                                 )
                             )
                         )
@@ -316,7 +347,7 @@ fun AudioPlayerScreen(
                         )
                     } else {
                         AsyncImage(
-                            model = track.thumbnailUrl ?: R.drawable.img_album_placeholder,
+                            model = artworkModel,
                             contentDescription = track.title,
                             placeholder = painterResource(id = R.drawable.img_album_placeholder),
                             error = painterResource(id = R.drawable.img_album_placeholder),
@@ -329,7 +360,7 @@ fun AudioPlayerScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             // Title & Favorite
             Row(
@@ -345,7 +376,7 @@ fun AudioPlayerScreen(
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "${track.author ?: track.platform} • ${track.qualityLabel}",
+                        text = "${track.author ?: track.sourceHost} • ${track.qualityLabel}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1
@@ -360,15 +391,34 @@ fun AudioPlayerScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
-            // Waveform Visualizer + Scrubber
+            // Selectable Visualizer Mode Strip
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                VisualizerStyle.entries.forEach { vStyle ->
+                    FilterChip(
+                        selected = settings.visualizerStyle == vStyle,
+                        onClick = { viewModel.setVisualizerStyle(vStyle) },
+                        label = { Text(vStyle.label, style = MaterialTheme.typography.labelSmall) }
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            // Live Visualizer Canvas
             AnimatedAudioVisualizer(
                 isPlaying = state.isPlaying,
                 progress = progressFraction,
+                style = settings.visualizerStyle,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(42.dp)
+                    .height(if (settings.visualizerStyle == VisualizerStyle.ORBITAL_RING) 76.dp else 46.dp)
             )
 
             Slider(
@@ -388,7 +438,7 @@ fun AudioPlayerScreen(
                 Text(FormatUtils.formatDuration(state.durationMs), style = MaterialTheme.typography.labelSmall)
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             // Main Transport Controls
             Row(
@@ -411,7 +461,11 @@ fun AudioPlayerScreen(
                     modifier = Modifier
                         .size(72.dp)
                         .clip(CircleShape)
-                        .background(Brush.linearGradient(listOf(ElectricCyan, AuroraViolet)))
+                        .background(
+                            Brush.linearGradient(
+                                listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.secondary)
+                            )
+                        )
                 ) {
                     Icon(
                         imageVector = if (state.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
@@ -432,10 +486,10 @@ fun AudioPlayerScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(18.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             // Utility Bar: Equalizer, Speed, Sleep Timer, Queue
-            LiquidGlassCard(cornerRadius = 20.dp, contentPadding = 10.dp) {
+            GlassCard(cornerRadius = 20.dp, contentPadding = 10.dp) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceAround

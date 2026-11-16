@@ -30,38 +30,38 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.AudioFile
 import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.PrivacyTip
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.VideoFile
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -87,12 +87,11 @@ import com.example.R
 import com.example.data.local.DownloadEntity
 import com.example.model.AnalyzedMedia
 import com.example.model.MediaFormatOption
-import com.example.model.MediaPlatform
 import com.example.model.MediaType
-import com.example.model.SearchPlatformScope
+import com.example.model.SearchScope
 import com.example.ui.components.FormatUtils
 import com.example.ui.components.LiquidGlassCard
-import com.example.ui.components.PlatformBadgeChip
+import com.example.ui.components.MediaSourceBadgeChip
 import com.example.ui.components.ShimmerSkeletonCard
 import com.example.ui.theme.AuroraViolet
 import com.example.ui.theme.ElectricCyan
@@ -100,20 +99,18 @@ import com.example.ui.theme.EmeraldMint
 import com.example.ui.viewmodel.AnalyzeUiState
 import com.example.ui.viewmodel.MainViewModel
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     viewModel: MainViewModel,
     onOpenQueue: () -> Unit,
-    onOpenSearch: (SearchPlatformScope) -> Unit,
+    onOpenSearch: (SearchScope) -> Unit,
     onOpenLibrary: () -> Unit,
-    onOpenStatusSaver: () -> Unit,
+    onOpenPrivacyPolicy: () -> Unit,
     onOpenBrowser: () -> Unit,
     onOpenAudioPlayer: () -> Unit,
     onPlayMedia: (DownloadEntity) -> Unit
 ) {
     val urlInput by viewModel.urlInput.collectAsStateWithLifecycle()
-    val detectedPlatform by viewModel.detectedPlatform.collectAsStateWithLifecycle()
     val clipboardSuggestion by viewModel.clipboardSuggestion.collectAsStateWithLifecycle()
     val analyzeState by viewModel.analyzeState.collectAsStateWithLifecycle()
     val completedDownloads by viewModel.completedDownloads.collectAsStateWithLifecycle()
@@ -164,7 +161,7 @@ fun HomeScreen(
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "Media Downloader & Offline Studio",
+                            text = "Smart URL Media Bot & Offline Studio",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -203,7 +200,7 @@ fun HomeScreen(
                         contentPadding = 12.dp,
                         onClick = {
                             clipboardSuggestion?.let {
-                                viewModel.pasteAndAnalyze(it)
+                                viewModel.pasteAndFetch(it)
                                 viewModel.setClipboardSuggestion(null)
                             }
                         }
@@ -220,7 +217,7 @@ fun HomeScreen(
                             Spacer(modifier = Modifier.width(10.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "Clipboard Link Detected",
+                                    text = "Clipboard URL Detected",
                                     style = MaterialTheme.typography.labelLarge,
                                     color = MaterialTheme.colorScheme.primary
                                 )
@@ -234,18 +231,18 @@ fun HomeScreen(
                             }
                             TextButton(onClick = {
                                 clipboardSuggestion?.let {
-                                    viewModel.pasteAndAnalyze(it)
+                                    viewModel.pasteAndFetch(it)
                                     viewModel.setClipboardSuggestion(null)
                                 }
                             }) {
-                                Text("Analyze")
+                                Text("Fetch Media")
                             }
                         }
                     }
                 }
             }
 
-            // URL Input & Analyze Glass Card
+            // URL Input & Smart Bot Card
             item {
                 LiquidGlassCard(cornerRadius = 26.dp, contentPadding = 18.dp) {
                     Row(
@@ -254,13 +251,11 @@ fun HomeScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "Paste Media Link",
+                            text = "Paste Link to Fetch Video or Image",
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onSurface
                         )
-                        detectedPlatform?.let { platform ->
-                            PlatformBadgeChip(platform = platform)
-                        }
+                        MediaSourceBadgeChip(label = "Link Bot")
                     }
 
                     Spacer(modifier = Modifier.height(12.dp))
@@ -273,7 +268,7 @@ fun HomeScreen(
                             .testTag("home_url_input"),
                         placeholder = {
                             Text(
-                                "https://youtube.com/..., tiktok, instagram, spotify...",
+                                "https://example.com/video.mp4 or any media page URL",
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -301,7 +296,7 @@ fun HomeScreen(
                         singleLine = true,
                         shape = RoundedCornerShape(18.dp),
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
-                        keyboardActions = KeyboardActions(onGo = { viewModel.analyzeCurrentUrl() }),
+                        keyboardActions = KeyboardActions(onGo = { viewModel.fetchMediaFromCurrentUrl() }),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = MaterialTheme.colorScheme.primary,
                             unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)
@@ -318,7 +313,7 @@ fun HomeScreen(
                             onClick = {
                                 val clip = clipboardManager.getText()?.text?.trim().orEmpty()
                                 if (clip.isNotBlank()) {
-                                    viewModel.updateUrlInput(clip)
+                                    viewModel.pasteAndFetch(clip)
                                 } else {
                                     viewModel.showMessage("Clipboard is empty")
                                 }
@@ -340,7 +335,7 @@ fun HomeScreen(
                         }
 
                         Button(
-                            onClick = { viewModel.analyzeCurrentUrl() },
+                            onClick = { viewModel.fetchMediaFromCurrentUrl() },
                             modifier = Modifier
                                 .weight(1.4f)
                                 .height(50.dp)
@@ -357,7 +352,7 @@ fun HomeScreen(
                                 modifier = Modifier.size(19.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Analyze", fontWeight = FontWeight.Bold)
+                            Text("Fetch Media", fontWeight = FontWeight.Bold)
                         }
                     }
 
@@ -366,12 +361,12 @@ fun HomeScreen(
                         is AnalyzeUiState.Loading -> {
                             Spacer(modifier = Modifier.height(14.dp))
                             Text(
-                                text = "Analyzing ${state.platform.displayName} streams...",
+                                text = "Scanning URL for videos, images & quality sizes...",
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.primary
                             )
                             Spacer(modifier = Modifier.height(8.dp))
-                            ShimmerSkeletonCard(height = 96.dp)
+                            ShimmerSkeletonCard(height = 110.dp)
                         }
                         is AnalyzeUiState.Error -> {
                             Spacer(modifier = Modifier.height(12.dp))
@@ -390,6 +385,21 @@ fun HomeScreen(
                         }
                         else -> Unit
                     }
+                }
+            }
+
+            // Inline Fetched Media Preview & Quality/Size Selector right on screen
+            val fetchedState = analyzeState as? AnalyzeUiState.Success
+            if (fetchedState != null) {
+                item(key = "fetched_media_preview_${fetchedState.media.sourceUrl}") {
+                    FetchedMediaPreviewCard(
+                        analyzed = fetchedState.media,
+                        availableFolders = listOf("Auto by Type") + viewModel.getStorageBreakdownFolders(),
+                        onDismiss = { viewModel.dismissFetchedMedia() },
+                        onStartDownload = { format, customTitle, folder ->
+                            viewModel.startDownload(fetchedState.media, format, customTitle, folder)
+                        }
+                    )
                 }
             }
 
@@ -414,7 +424,7 @@ fun HomeScreen(
                         )
                         Spacer(modifier = Modifier.width(10.dp))
                         Text(
-                            text = "Download only media you own or have permission to save, and respect platform terms.",
+                            text = "Download only videos or images you own or have permission to save.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -435,6 +445,13 @@ fun HomeScreen(
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     QuickActionTile(
+                        title = "YouTube",
+                        subtitle = "Search Media",
+                        icon = Icons.Filled.Search,
+                        modifier = Modifier.weight(1f),
+                        onClick = { onOpenSearch(SearchScope.YOUTUBE) }
+                    )
+                    QuickActionTile(
                         title = "Browser",
                         subtitle = "Google & Web",
                         icon = Icons.Filled.Public,
@@ -449,18 +466,11 @@ fun HomeScreen(
                         onClick = onOpenQueue
                     )
                     QuickActionTile(
-                        title = "Statuses",
-                        subtitle = "WhatsApp",
-                        icon = Icons.Filled.Smartphone,
+                        title = "Privacy",
+                        subtitle = "Policy Info",
+                        icon = Icons.Filled.PrivacyTip,
                         modifier = Modifier.weight(1f),
-                        onClick = onOpenStatusSaver
-                    )
-                    QuickActionTile(
-                        title = "Player",
-                        subtitle = "Equalizer",
-                        icon = Icons.AutoMirrored.Filled.QueueMusic,
-                        modifier = Modifier.weight(1f),
-                        onClick = onOpenAudioPlayer
+                        onClick = onOpenPrivacyPolicy
                     )
                 }
             }
@@ -500,50 +510,6 @@ fun HomeScreen(
                         StatMetricItem("Favorites", "${favorites.size}", Modifier.weight(1f))
                         StatMetricItem("Queue", "${queueDownloads.size}", Modifier.weight(1f))
                         StatMetricItem("Played", "${recentlyPlayed.size}", Modifier.weight(1f))
-                    }
-                }
-            }
-
-            // Trending Platforms
-            item {
-                Text(
-                    text = "Supported Platforms",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onBackground
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                val platforms = listOf(
-                    MediaPlatform.YOUTUBE,
-                    MediaPlatform.TIKTOK,
-                    MediaPlatform.INSTAGRAM,
-                    MediaPlatform.FACEBOOK,
-                    MediaPlatform.TWITTER,
-                    MediaPlatform.SPOTIFY,
-                    MediaPlatform.SOUNDCLOUD,
-                    MediaPlatform.THREADS,
-                    MediaPlatform.PINTEREST,
-                    MediaPlatform.LIKEE,
-                    MediaPlatform.TERABOX,
-                    MediaPlatform.GOOGLE_DRIVE
-                )
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    platforms.forEach { platform ->
-                        PlatformBadgeChip(
-                            platform = platform,
-                            modifier = Modifier.clickable {
-                                when (platform) {
-                                    MediaPlatform.YOUTUBE -> onOpenSearch(SearchPlatformScope.YOUTUBE)
-                                    MediaPlatform.SPOTIFY -> onOpenSearch(SearchPlatformScope.SPOTIFY)
-                                    MediaPlatform.SOUNDCLOUD -> onOpenSearch(SearchPlatformScope.SOUNDCLOUD)
-                                    else -> viewModel.showMessage("Paste a ${platform.displayName} link above to analyze")
-                                }
-                            }
-                        )
                     }
                 }
             }
@@ -594,7 +560,7 @@ fun HomeScreen(
                                 style = MaterialTheme.typography.titleSmall
                             )
                             Text(
-                                text = "Paste any supported link above or search YouTube, Spotify, and SoundCloud.",
+                                text = "Paste any video or image URL above, or search YouTube to save media offline.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -650,10 +616,10 @@ fun HomeScreen(
                                 selected = false,
                                 onClick = {
                                     if (entry.isUrl) {
-                                        viewModel.pasteAndAnalyze(entry.query)
+                                        viewModel.pasteAndFetch(entry.query)
                                     } else {
                                         viewModel.setGlobalSearchQuery(entry.query)
-                                        onOpenSearch(SearchPlatformScope.YOUTUBE)
+                                        onOpenSearch(SearchScope.YOUTUBE)
                                     }
                                 },
                                 label = {
@@ -679,157 +645,256 @@ fun HomeScreen(
             }
         }
     }
-
-    // Analyzed Media Format Selection Bottom Sheet
-    val successState = analyzeState as? AnalyzeUiState.Success
-    if (successState != null) {
-        AnalyzedMediaSheet(
-            analyzed = successState.media,
-            availableFolders = listOf("Auto by Platform") + viewModel.getStorageBreakdownFolders(),
-            onDismiss = { viewModel.dismissAnalysisSheet() },
-            onStartDownload = { format, customTitle, folder ->
-                viewModel.startDownload(successState.media, format, customTitle, folder)
-            }
-        )
-    }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AnalyzedMediaSheet(
+private fun FetchedMediaPreviewCard(
     analyzed: AnalyzedMedia,
     availableFolders: List<String>,
     onDismiss: () -> Unit,
     onStartDownload: (MediaFormatOption, String, String?) -> Unit
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var selectedFormat by remember(analyzed) { mutableStateOf(analyzed.formats.first()) }
     var customTitle by remember(analyzed) { mutableStateOf(analyzed.title) }
-    var selectedFolder by remember(analyzed) { mutableStateOf("Auto by Platform") }
+    var selectedFolder by remember(analyzed) { mutableStateOf("Auto by Type") }
 
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surface
+    val previewModel: Any = when {
+        selectedFormat.mediaType == MediaType.IMAGE -> selectedFormat.downloadUrl
+        !analyzed.thumbnailUrl.isNullOrBlank() -> analyzed.thumbnailUrl
+        else -> R.drawable.img_album_placeholder
+    }
+
+    LiquidGlassCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("fetched_media_preview_card"),
+        cornerRadius = 26.dp,
+        contentPadding = 16.dp
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                AsyncImage(
-                    model = analyzed.thumbnailUrl ?: R.drawable.img_album_placeholder,
-                    contentDescription = analyzed.title,
-                    placeholder = painterResource(id = R.drawable.img_album_placeholder),
-                    error = painterResource(id = R.drawable.img_album_placeholder),
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .size(84.dp)
-                        .clip(RoundedCornerShape(16.dp))
+                MediaSourceBadgeChip(label = selectedFormat.mediaType.label)
+                Text(
+                    text = analyzed.sourceHost,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                Column(modifier = Modifier.weight(1f)) {
-                    PlatformBadgeChip(platform = analyzed.platform)
-                    Spacer(modifier = Modifier.height(6.dp))
+            }
+            IconButton(onClick = onDismiss) {
+                Icon(Icons.Filled.Close, contentDescription = "Close Preview")
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Large Media Preview directly on screen
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(190.dp)
+                .clip(RoundedCornerShape(18.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+        ) {
+            AsyncImage(
+                model = previewModel,
+                contentDescription = analyzed.title,
+                placeholder = painterResource(id = R.drawable.img_album_placeholder),
+                error = painterResource(id = R.drawable.img_album_placeholder),
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+            analyzed.durationText?.let { dur ->
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(10.dp)
+                ) {
                     Text(
-                        text = analyzed.title,
-                        style = MaterialTheme.typography.titleMedium,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
+                        text = dur,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     )
-                    val metaLine = listOfNotNull(analyzed.author, analyzed.durationText).joinToString(" • ")
-                    if (metaLine.isNotBlank()) {
-                        Text(
-                            text = metaLine,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Text(
+            text = analyzed.title,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+        analyzed.author?.let { author ->
+            Text(
+                text = author,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        OutlinedTextField(
+            value = customTitle,
+            onValueChange = { customTitle = it },
+            label = { Text("File title") },
+            singleLine = true,
+            shape = RoundedCornerShape(14.dp),
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Text(
+            text = "Select Quality & File Size (${analyzed.formats.size} found)",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Interactive Quality + Size Cards
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            analyzed.formats.forEach { option ->
+                val isSelected = option.id == selectedFormat.id
+                val sizeText = option.sizeDisplay
+                    ?: option.estimatedSizeBytes?.let { FormatUtils.formatBytes(it) }
+                    ?: "Size varies"
+                val icon = when (option.mediaType) {
+                    MediaType.VIDEO -> Icons.Filled.VideoFile
+                    MediaType.AUDIO -> Icons.Filled.AudioFile
+                    MediaType.IMAGE -> Icons.Filled.Image
+                }
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = if (isSelected) {
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
+                    } else {
+                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                    },
+                    border = BorderStroke(
+                        width = if (isSelected) 1.5.dp else 1.dp,
+                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .clickable { selectedFormat = option }
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = icon,
+                                contentDescription = null,
+                                tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = option.label,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                val detailParts = listOfNotNull(
+                                    option.mediaType.label,
+                                    option.extension.uppercase(),
+                                    option.resolution
+                                ).joinToString(" • ")
+                                Text(
+                                    text = detailParts,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f)
+                            ) {
+                                Text(
+                                    text = sizeText,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                )
+                            }
+                            if (isSelected) {
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Icon(
+                                    imageVector = Icons.Filled.CheckCircle,
+                                    contentDescription = "Selected",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
                     }
                 }
             }
+        }
 
-            OutlinedTextField(
-                value = customTitle,
-                onValueChange = { customTitle = it },
-                label = { Text("Rename before saving") },
-                singleLine = true,
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.fillMaxWidth()
-            )
+        Spacer(modifier = Modifier.height(10.dp))
 
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            availableFolders.forEach { folder ->
+                FilterChip(
+                    selected = selectedFolder == folder,
+                    onClick = { selectedFolder = folder },
+                    label = { Text(folder) }
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Button(
+            onClick = { onStartDownload(selectedFormat, customTitle, selectedFolder) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(54.dp)
+                .testTag("sheet_download_now_button"),
+            shape = RoundedCornerShape(18.dp)
+        ) {
+            Icon(imageVector = Icons.Filled.Download, contentDescription = null)
+            Spacer(modifier = Modifier.width(8.dp))
+            val btnSize = selectedFormat.sizeDisplay?.let { " • $it" } ?: ""
             Text(
-                text = "Select Quality / Format",
-                style = MaterialTheme.typography.labelLarge
+                text = "Download ${selectedFormat.quality}$btnSize",
+                fontWeight = FontWeight.Bold
             )
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                analyzed.formats.forEach { option ->
-                    val isSelected = option.id == selectedFormat.id
-                    FilterChip(
-                        selected = isSelected,
-                        onClick = { selectedFormat = option },
-                        label = {
-                            val sizePart = option.sizeDisplay?.let { " ($it)" } ?: ""
-                            Text("${option.label} • ${option.extension.uppercase()}$sizePart")
-                        },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = if (option.mediaType == MediaType.AUDIO) {
-                                    Icons.Filled.AudioFile
-                                } else {
-                                    Icons.Filled.VideoFile
-                                },
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                    )
-                }
-            }
-
-            Text(
-                text = "SaveBox Folder",
-                style = MaterialTheme.typography.labelLarge
-            )
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                availableFolders.forEach { folder ->
-                    FilterChip(
-                        selected = selectedFolder == folder,
-                        onClick = { selectedFolder = folder },
-                        label = { Text(folder) }
-                    )
-                }
-            }
-
-            Button(
-                onClick = { onStartDownload(selectedFormat, customTitle, selectedFolder) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(54.dp)
-                    .testTag("sheet_download_now_button"),
-                shape = RoundedCornerShape(18.dp)
-            ) {
-                Icon(imageVector = Icons.Filled.Download, contentDescription = null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Download Now (${selectedFormat.label})", fontWeight = FontWeight.Bold)
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }
@@ -908,6 +973,15 @@ private fun SectionHeaderRow(
     }
 }
 
+private fun resolveHomeThumbModel(thumbnailUrl: String?): Any {
+    if (thumbnailUrl.isNullOrBlank()) return R.drawable.img_album_placeholder
+    return if (thumbnailUrl.startsWith("/")) {
+        java.io.File(thumbnailUrl)
+    } else {
+        thumbnailUrl
+    }
+}
+
 @Composable
 private fun CompactMediaCard(
     item: DownloadEntity,
@@ -921,7 +995,7 @@ private fun CompactMediaCard(
     ) {
         Box {
             AsyncImage(
-                model = item.thumbnailUrl ?: R.drawable.img_album_placeholder,
+                model = resolveHomeThumbModel(item.thumbnailUrl),
                 contentDescription = item.title,
                 placeholder = painterResource(id = R.drawable.img_album_placeholder),
                 error = painterResource(id = R.drawable.img_album_placeholder),
@@ -956,7 +1030,7 @@ private fun CompactMediaCard(
             overflow = TextOverflow.Ellipsis
         )
         Text(
-            text = "${MediaPlatform.fromString(item.platform).displayName} • ${item.qualityLabel}",
+            text = "${item.qualityLabel} • ${FormatUtils.formatBytes(item.fileSizeBytes)}",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1
@@ -980,7 +1054,7 @@ private fun CompactDownloadRow(
             verticalAlignment = Alignment.CenterVertically
         ) {
             AsyncImage(
-                model = item.thumbnailUrl ?: R.drawable.img_album_placeholder,
+                model = resolveHomeThumbModel(item.thumbnailUrl),
                 contentDescription = item.title,
                 placeholder = painterResource(id = R.drawable.img_album_placeholder),
                 error = painterResource(id = R.drawable.img_album_placeholder),
@@ -1008,7 +1082,7 @@ private fun CompactDownloadRow(
                 Icon(
                     imageVector = Icons.Filled.Favorite,
                     contentDescription = "Favorite",
-                    tint = if (item.isFavorite) EmeraldMint else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                    tint = if (item.isFavorite) EmeraldMint else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
                 )
             }
         }

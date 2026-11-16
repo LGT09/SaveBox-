@@ -270,10 +270,13 @@ class MediaControllerManager(
             !entity.localUri.isNullOrBlank() -> Uri.parse(entity.localUri)
             else -> return null
         }
+        val artworkUri = entity.thumbnailUrl?.let { thumb ->
+            if (thumb.startsWith("/")) Uri.fromFile(File(thumb)) else Uri.parse(thumb)
+        }
         val metadata = MediaMetadata.Builder()
             .setTitle(entity.title)
-            .setArtist(entity.author ?: entity.platform)
-            .setArtworkUri(entity.thumbnailUrl?.let { Uri.parse(it) })
+            .setArtist(entity.author ?: entity.sourceHost)
+            .setArtworkUri(artworkUri)
             .build()
 
         return MediaItem.Builder()

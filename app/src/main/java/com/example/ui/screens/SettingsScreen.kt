@@ -26,9 +26,12 @@ import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.PrivacyTip
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Security
@@ -51,14 +54,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.model.AppThemeMode
+import com.example.model.AppThemePalette
+import com.example.model.VisualizerStyle
 import com.example.ui.components.FormatUtils
-import com.example.ui.components.LiquidGlassCard
+import com.example.ui.components.GlassCard
 import com.example.ui.viewmodel.MainViewModel
 
 @Composable
 fun SettingsScreen(
     viewModel: MainViewModel,
-    onOpenInAppBrowser: (String) -> Unit = {}
+    onOpenInAppBrowser: (String) -> Unit = {},
+    onOpenPrivacyPolicy: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val settings by viewModel.settings.collectAsStateWithLifecycle()
@@ -97,15 +103,17 @@ fun SettingsScreen(
                 )
             }
 
-            // Appearance & Language
+            // Glassmorphism Themes, Mode & Language
             item {
-                LiquidGlassCard(cornerRadius = 22.dp, contentPadding = 16.dp) {
+                GlassCard(cornerRadius = 22.dp, contentPadding = 16.dp) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Filled.Palette, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Appearance & Language", style = MaterialTheme.typography.titleMedium)
+                        Text("Glassmorphism Themes & Appearance", style = MaterialTheme.typography.titleMedium)
                     }
                     Spacer(modifier = Modifier.height(10.dp))
+                    Text("Theme Mode", style = MaterialTheme.typography.labelLarge)
+                    Spacer(modifier = Modifier.height(4.dp))
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -120,6 +128,25 @@ fun SettingsScreen(
                             )
                         }
                     }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("Liquid Glass Palette", style = MaterialTheme.typography.labelLarge)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        AppThemePalette.entries.forEach { palette ->
+                            FilterChip(
+                                selected = settings.themePalette == palette,
+                                onClick = { viewModel.setThemePalette(palette) },
+                                label = { Text(palette.label) }
+                            )
+                        }
+                    }
+
                     SettingToggleRow(
                         title = "Material You Dynamic Color",
                         subtitle = "Adapt palette from system wallpaper (Android 12+)",
@@ -150,7 +177,7 @@ fun SettingsScreen(
 
             // Downloads & Notifications
             item {
-                LiquidGlassCard(cornerRadius = 22.dp, contentPadding = 16.dp) {
+                GlassCard(cornerRadius = 22.dp, contentPadding = 16.dp) {
                     Text("Downloads & Notifications", style = MaterialTheme.typography.titleMedium)
                     Spacer(modifier = Modifier.height(8.dp))
                     SettingToggleRow(
@@ -193,10 +220,10 @@ fun SettingsScreen(
                 }
             }
 
-            // Media Player Settings
+            // Media Player & Visualizer Settings
             item {
-                LiquidGlassCard(cornerRadius = 22.dp, contentPadding = 16.dp) {
-                    Text("Media Player", style = MaterialTheme.typography.titleMedium)
+                GlassCard(cornerRadius = 22.dp, contentPadding = 16.dp) {
+                    Text("Media Player & Visualizer", style = MaterialTheme.typography.titleMedium)
                     Spacer(modifier = Modifier.height(8.dp))
                     SettingToggleRow(
                         title = "Auto Resume Playback",
@@ -204,6 +231,25 @@ fun SettingsScreen(
                         checked = settings.autoResumePlayback,
                         onCheckedChange = { viewModel.setAutoResumePlayback(it) }
                     )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.GraphicEq, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Visualizer Style", style = MaterialTheme.typography.labelLarge)
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        VisualizerStyle.entries.forEach { vStyle ->
+                            FilterChip(
+                                selected = settings.visualizerStyle == vStyle,
+                                onClick = { viewModel.setVisualizerStyle(vStyle) },
+                                label = { Text(vStyle.label) }
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
                     Text("Default Playback Speed", style = MaterialTheme.typography.labelLarge)
                     Spacer(modifier = Modifier.height(6.dp))
                     Row(
@@ -223,7 +269,7 @@ fun SettingsScreen(
 
             // Storage, Cache Manager, Backup & History
             item {
-                LiquidGlassCard(cornerRadius = 22.dp, contentPadding = 16.dp) {
+                GlassCard(cornerRadius = 22.dp, contentPadding = 16.dp) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Filled.Storage, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.width(8.dp))
@@ -299,29 +345,39 @@ fun SettingsScreen(
                 }
             }
 
-            // Security & Privacy
+            // Security & Privacy Policy
             item {
-                LiquidGlassCard(cornerRadius = 22.dp, contentPadding = 16.dp) {
+                GlassCard(cornerRadius = 22.dp, contentPadding = 16.dp) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Filled.Security, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Privacy & Responsible Use", style = MaterialTheme.typography.titleMedium)
+                        Text("Privacy Policy & Responsible Use", style = MaterialTheme.typography.titleMedium)
                     }
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = "• All API & media transfers enforce HTTPS.\n" +
-                            "• Download history & playlists stay strictly local on your device.\n" +
-                            "• SaveBox only accesses WhatsApp .Statuses folders after explicit user consent.\n" +
-                            "• Download only media you own or have permission to save, and respect platform terms.",
+                        text = "• All network and media transfers enforce HTTPS.\n" +
+                            "• Download history, playlists & preferences stay strictly local on your device.\n" +
+                            "• SaveBox only accesses device folders you explicitly select via the system folder or media picker.\n" +
+                            "• Save only media you own or have permission to store, and respect content owners' rights.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Button(
+                        onClick = onOpenPrivacyPolicy,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Icon(Icons.Filled.PrivacyTip, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Read Full Privacy Policy")
+                    }
                 }
             }
 
             // About Developer (Vincent Ganiza / Traxxion Tech)
             item {
-                LiquidGlassCard(cornerRadius = 24.dp, contentPadding = 18.dp) {
+                GlassCard(cornerRadius = 24.dp, contentPadding = 18.dp) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Filled.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.width(8.dp))
@@ -363,12 +419,14 @@ fun SettingsScreen(
                     TextButton(
                         onClick = {
                             runCatching {
-                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/263716857999")))
+                                context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:+263716857999")))
                             }
                         },
                         modifier = Modifier.align(Alignment.CenterHorizontally)
                     ) {
-                        Text("WhatsApp Support: +263716857999")
+                        Icon(Icons.Filled.Phone, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Support Contact: +263716857999")
                     }
                 }
             }

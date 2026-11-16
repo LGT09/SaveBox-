@@ -28,6 +28,9 @@ interface DownloadDao {
     @Query("SELECT * FROM downloads WHERE id = :id LIMIT 1")
     suspend fun getById(id: Long): DownloadEntity?
 
+    @Query("SELECT * FROM downloads WHERE localFilePath = :path OR localUri = :path LIMIT 1")
+    suspend fun getByPathOrUri(path: String): DownloadEntity?
+
     @Query("SELECT * FROM downloads")
     suspend fun getAllOnce(): List<DownloadEntity>
 
@@ -40,8 +43,8 @@ interface DownloadDao {
     @Query("UPDATE downloads SET downloadedBytes = :downloaded, fileSizeBytes = :total, status = :status WHERE id = :id")
     suspend fun updateProgress(id: Long, downloaded: Long, total: Long, status: String)
 
-    @Query("UPDATE downloads SET status = :status, localFilePath = :path, localUri = :uri, fileSizeBytes = :size, downloadedBytes = :size, errorMessage = NULL WHERE id = :id")
-    suspend fun markCompleted(id: Long, status: String, path: String, uri: String?, size: Long)
+    @Query("UPDATE downloads SET status = :status, localFilePath = :path, localUri = :uri, fileSizeBytes = :size, downloadedBytes = :size, thumbnailUrl = COALESCE(:coverPath, thumbnailUrl), errorMessage = NULL WHERE id = :id")
+    suspend fun markCompleted(id: Long, status: String, path: String, uri: String?, size: Long, coverPath: String? = null)
 
     @Query("UPDATE downloads SET status = :status, errorMessage = :error WHERE id = :id")
     suspend fun markStatus(id: Long, status: String, error: String? = null)
@@ -63,6 +66,69 @@ interface DownloadDao {
 
     @Query("DELETE FROM downloads")
     suspend fun clearAll()
+}
+
+@Dao
+interface MediaItemDao {
+    @Query("SELECT * FROM media_items ORDER BY timestamp DESC")
+    fun observeAllMediaItems(): Flow<List<MediaItem>>
+
+    @Query("SELECT * FROM media_items WHERE mediaType = :mediaType ORDER BY timestamp DESC")
+    fun observeByMediaType(mediaType: String): Flow<List<MediaItem>>
+
+    @Query("SELECT * FROM media_items WHERE filePath = :filePath LIMIT 1")
+    suspend fun getByFilePath(filePath: String): MediaItem?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(item: MediaItem): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(items: List<MediaItem>)
+
+    @Query("DELETE FROM media_items WHERE id = :id")
+    suspend fun deleteById(id: Long)
+
+    @Query("DELETE FROM media_items WHERE filePath = :filePath")
+    suspend fun deleteByFilePath(filePath: String)
+
+    @Query("DELETE FROM media_items")
+    suspend fun clearAll()
+}
+
+@Dao
+interface DownloadQueueDao {
+    @Query("SELECT * FROM download_queue ORDER BY createdAt DESC")
+    fun observeQueue(): Flow<List<DownloadQueue>>
+
+    @Query("SELECT * FROM download_queue WHERE downloadId = :downloadId LIMIT 1")
+    suspend fun getByDownloadId(downloadId: Long): DownloadQueue?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(entry: DownloadQueue): Long
+
+    @Query("UPDATE download_queue SET downloadedBytes = :downloaded, totalBytes = :total, progressPercent = :percent, status = :status, updatedAt = :updatedAt WHERE downloadId = :downloadId")
+    suspend fun updateProgress(
+        downloadId: Long,
+        downloaded: Long,
+        total: Long,
+        percent: Int,
+        status: String,
+        updatedAt: Long = System.currentTimeMillis()
+    )
+
+    @Query("UPDATE download_queue SET status = :status, errorMessage = :errorMessage, updatedAt = :updatedAt WHERE downloadId = :downloadId")
+    suspend fun updateStatus(
+        downloadId: Long,
+        status: String,
+        errorMessage: String? = null,
+        updatedAt: Long = System.currentTimeMillis()
+    )
+
+    @Query("DELETE FROM download_queue WHERE downloadId = :downloadId")
+    suspend fun deleteByDownloadId(downloadId: Long)
+
+    @Query("DELETE FROM download_queue WHERE status != 'DOWNLOADING' AND status != 'QUEUED'")
+    suspend fun clearInactive()
 }
 
 @Dao

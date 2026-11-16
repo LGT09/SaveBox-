@@ -34,9 +34,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.example.R
 import com.example.ui.components.AnimatedAuroraBackdrop
 import com.example.ui.components.LiquidGlassCard
 import com.example.ui.components.SaveBoxOrbitalLogo
@@ -93,7 +95,7 @@ fun SplashScreen(
                         )
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = "Fast Social Media Downloader & Media Player",
+                            text = stringResource(id = R.string.splash_tagline),
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.primary,
                             textAlign = TextAlign.Center

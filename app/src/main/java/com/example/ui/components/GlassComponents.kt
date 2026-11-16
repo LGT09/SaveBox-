@@ -17,7 +17,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
@@ -43,7 +42,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -60,12 +58,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.example.R
-import com.example.model.MediaPlatform
-import com.example.ui.theme.AuroraViolet
-import com.example.ui.theme.ElectricCyan
-import com.example.ui.theme.GlassBorderDark
-import com.example.ui.theme.GlassBorderLight
+import com.example.model.VisualizerStyle
+import com.example.ui.theme.LocalSaveBoxGlassTokens
 import java.util.Locale
+import kotlin.math.PI
+import kotlin.math.cos
 import kotlin.math.sin
 
 object FormatUtils {
@@ -101,6 +98,7 @@ fun AnimatedAuroraBackdrop(
     modifier: Modifier = Modifier,
     content: @Composable BoxScope.() -> Unit
 ) {
+    val tokens = LocalSaveBoxGlassTokens.current
     val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val infiniteTransition = rememberInfiniteTransition(label = "aurora")
     val phase by infiniteTransition.animateFloat(
@@ -113,14 +111,18 @@ fun AnimatedAuroraBackdrop(
         label = "aurora_phase"
     )
 
-    val bg = MaterialTheme.colorScheme.background
-    val primaryGlow = MaterialTheme.colorScheme.primary
-    val secondaryGlow = MaterialTheme.colorScheme.secondary
-
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(bg)
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        tokens.backdropGradientTop,
+                        tokens.backdropGradientBottom,
+                        tokens.backdropGradientTop
+                    )
+                )
+            )
     ) {
         if (isDark) {
             Image(
@@ -129,39 +131,123 @@ fun AnimatedAuroraBackdrop(
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(280.dp)
-                    .alpha(0.24f)
+                    .height(290.dp)
+                    .alpha(0.20f)
             )
         }
-        Canvas(modifier = Modifier.fillMaxSize()) {
+        Canvas(
+            modifier = Modifier.fillMaxSize()
+        ) {
             val w = size.width
             val h = size.height
+            val pAlpha = if (isDark) 0.24f else 0.14f
+            val sAlpha = if (isDark) 0.22f else 0.12f
             drawCircle(
                 brush = Brush.radialGradient(
-                    colors = listOf(
-                        primaryGlow.copy(alpha = if (isDark) 0.16f else 0.10f),
-                        Color.Transparent
+                    colorStops = arrayOf(
+                        0.0f to tokens.glowPrimary.copy(alpha = pAlpha),
+                        0.45f to tokens.glowPrimary.copy(alpha = pAlpha * 0.42f),
+                        1.0f to Color.Transparent
                     ),
-                    center = Offset(w * (0.2f + 0.3f * phase), h * 0.12f),
-                    radius = w * 0.75f
+                    center = Offset(w * (0.18f + 0.34f * phase), h * 0.14f),
+                    radius = w * 0.85f
                 ),
-                radius = w * 0.75f,
-                center = Offset(w * (0.2f + 0.3f * phase), h * 0.12f)
+                radius = w * 0.85f,
+                center = Offset(w * (0.18f + 0.34f * phase), h * 0.14f)
             )
             drawCircle(
                 brush = Brush.radialGradient(
-                    colors = listOf(
-                        secondaryGlow.copy(alpha = if (isDark) 0.15f else 0.08f),
-                        Color.Transparent
+                    colorStops = arrayOf(
+                        0.0f to tokens.glowSecondary.copy(alpha = sAlpha),
+                        0.45f to tokens.glowSecondary.copy(alpha = sAlpha * 0.42f),
+                        1.0f to Color.Transparent
                     ),
-                    center = Offset(w * (0.85f - 0.25f * phase), h * 0.45f),
-                    radius = w * 0.68f
+                    center = Offset(w * (0.88f - 0.28f * phase), h * 0.48f),
+                    radius = w * 0.78f
                 ),
-                radius = w * 0.68f,
-                center = Offset(w * (0.85f - 0.25f * phase), h * 0.45f)
+                radius = w * 0.78f,
+                center = Offset(w * (0.88f - 0.28f * phase), h * 0.48f)
+            )
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colorStops = arrayOf(
+                        0.0f to tokens.glowPrimary.copy(alpha = pAlpha * 0.55f),
+                        0.5f to tokens.glowPrimary.copy(alpha = pAlpha * 0.22f),
+                        1.0f to Color.Transparent
+                    ),
+                    center = Offset(w * 0.5f, h * 0.88f),
+                    radius = w * 0.72f
+                ),
+                radius = w * 0.72f,
+                center = Offset(w * 0.5f, h * 0.88f)
             )
         }
         content()
+    }
+}
+
+/**
+ * Reusable GlassCard built on Material 3 Surface with translucent glass backdrop,
+ * crisp specular border gradient, soft elevation, and micro-interaction press spring.
+ */
+@Composable
+fun GlassCard(
+    modifier: Modifier = Modifier,
+    cornerRadius: Dp = 24.dp,
+    tonalElevation: Dp = 6.dp,
+    shadowElevation: Dp = 10.dp,
+    onClick: (() -> Unit)? = null,
+    contentPadding: Dp = 16.dp,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    val tokens = LocalSaveBoxGlassTokens.current
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed && onClick != null) 0.975f else 1f,
+        animationSpec = spring(dampingRatio = 0.72f, stiffness = 500f),
+        label = "glass_press_scale"
+    )
+
+    val shape = RoundedCornerShape(cornerRadius)
+    val glassSurfaceBrush = Brush.linearGradient(
+        colors = listOf(tokens.glassStart, tokens.glassEnd)
+    )
+    val borderBrush = Brush.linearGradient(
+        colors = listOf(
+            tokens.borderHighlight,
+            tokens.borderFade,
+            tokens.glowSecondary.copy(alpha = 0.16f)
+        )
+    )
+
+    Surface(
+        modifier = modifier
+            .scale(scale)
+            .clip(shape)
+            .then(
+                if (onClick != null) {
+                    Modifier.clickable(
+                        interactionSource = interactionSource,
+                        indication = androidx.compose.material3.ripple(),
+                        onClick = onClick
+                    )
+                } else {
+                    Modifier
+                }
+            ),
+        shape = shape,
+        color = tokens.glassEnd.copy(alpha = 0.52f),
+        tonalElevation = tonalElevation,
+        shadowElevation = shadowElevation,
+        border = BorderStroke(1.dp, borderBrush)
+    ) {
+        Column(
+            modifier = Modifier
+                .background(glassSurfaceBrush)
+                .padding(contentPadding),
+            content = content
+        )
     }
 }
 
@@ -173,79 +259,26 @@ fun LiquidGlassCard(
     contentPadding: Dp = 16.dp,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
-    val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        targetValue = if (isPressed && onClick != null) 0.975f else 1f,
-        animationSpec = spring(dampingRatio = 0.7f, stiffness = 500f),
-        label = "glass_press_scale"
-    )
-
-    val shape = RoundedCornerShape(cornerRadius)
-    val glassSurfaceBrush = if (isDark) {
-        Brush.linearGradient(
-            colors = listOf(
-                Color(0xB818233E),
-                Color(0x9910182C)
-            )
-        )
-    } else {
-        Brush.linearGradient(
-            colors = listOf(
-                Color(0xEBFFFFFF),
-                Color(0xD9EEF4FC)
-            )
-        )
-    }
-
-    val borderBrush = Brush.linearGradient(
-        colors = if (isDark) {
-            listOf(GlassBorderLight, GlassBorderDark, Color(0x1400E5FF))
-        } else {
-            listOf(Color.White, Color(0x80B0C4DE))
-        }
-    )
-
-    val cardModifier = modifier
-        .scale(scale)
-        .shadow(
-            elevation = if (isDark) 10.dp else 6.dp,
-            shape = shape,
-            ambientColor = ElectricCyan.copy(alpha = 0.14f),
-            spotColor = AuroraViolet.copy(alpha = 0.18f)
-        )
-        .clip(shape)
-        .background(glassSurfaceBrush)
-        .border(width = 1.dp, brush = borderBrush, shape = shape)
-        .then(
-            if (onClick != null) {
-                Modifier.clickable(
-                    interactionSource = interactionSource,
-                    indication = androidx.compose.material3.ripple(),
-                    onClick = onClick
-                )
-            } else {
-                Modifier
-            }
-        )
-
-    Column(
-        modifier = cardModifier.padding(contentPadding),
+    GlassCard(
+        modifier = modifier,
+        cornerRadius = cornerRadius,
+        onClick = onClick,
+        contentPadding = contentPadding,
         content = content
     )
 }
 
 @Composable
-fun PlatformBadgeChip(
-    platform: MediaPlatform,
+fun MediaSourceBadgeChip(
+    label: String,
+    accentColor: Color = MaterialTheme.colorScheme.primary,
     modifier: Modifier = Modifier
 ) {
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(50),
-        color = platform.accentColor.copy(alpha = 0.16f),
-        border = BorderStroke(1.dp, platform.accentColor.copy(alpha = 0.45f))
+        color = accentColor.copy(alpha = 0.16f),
+        border = BorderStroke(1.dp, accentColor.copy(alpha = 0.45f))
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
@@ -255,11 +288,11 @@ fun PlatformBadgeChip(
                 modifier = Modifier
                     .size(7.dp)
                     .clip(CircleShape)
-                    .background(platform.accentColor)
+                    .background(accentColor)
             )
             Spacer(modifier = Modifier.width(6.dp))
             Text(
-                text = platform.displayName,
+                text = label,
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurface,
                 fontWeight = FontWeight.SemiBold
@@ -306,6 +339,8 @@ fun SaveBoxOrbitalLogo(
     size: Dp = 128.dp,
     isAnimating: Boolean = true
 ) {
+    val primary = MaterialTheme.colorScheme.primary
+    val secondary = MaterialTheme.colorScheme.secondary
     val infiniteTransition = rememberInfiniteTransition(label = "orbital_logo")
     val rotation by infiniteTransition.animateFloat(
         initialValue = 0f,
@@ -338,8 +373,8 @@ fun SaveBoxOrbitalLogo(
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        ElectricCyan.copy(alpha = 0.32f),
-                        AuroraViolet.copy(alpha = 0.14f),
+                        primary.copy(alpha = 0.32f),
+                        secondary.copy(alpha = 0.14f),
                         Color.Transparent
                     )
                 ),
@@ -348,7 +383,7 @@ fun SaveBoxOrbitalLogo(
 
             rotate(if (isAnimating) rotation else 0f, center) {
                 drawArc(
-                    brush = Brush.sweepGradient(listOf(ElectricCyan, AuroraViolet, Color.Transparent, ElectricCyan)),
+                    brush = Brush.sweepGradient(listOf(primary, secondary, Color.Transparent, primary)),
                     startAngle = 0f,
                     sweepAngle = 290f,
                     useCenter = false,
@@ -358,7 +393,6 @@ fun SaveBoxOrbitalLogo(
                 )
             }
 
-            // Frosted vault rounded square
             val boxSide = this.size.minDimension * 0.58f
             val topLeft = Offset((this.size.width - boxSide) / 2f, (this.size.height - boxSide) / 2f)
             drawRoundRect(
@@ -370,14 +404,13 @@ fun SaveBoxOrbitalLogo(
                 cornerRadius = CornerRadius(boxSide * 0.28f, boxSide * 0.28f)
             )
             drawRoundRect(
-                brush = Brush.linearGradient(listOf(ElectricCyan, AuroraViolet)),
+                brush = Brush.linearGradient(listOf(primary, secondary)),
                 topLeft = topLeft,
                 size = Size(boxSide, boxSide),
                 cornerRadius = CornerRadius(boxSide * 0.28f, boxSide * 0.28f),
                 style = Stroke(width = 4f)
             )
 
-            // Download arrow + Play accent inside vault
             val cx = this.size.width / 2f
             val cy = this.size.height / 2f
             val arrowPath = Path().apply {
@@ -389,11 +422,11 @@ fun SaveBoxOrbitalLogo(
             }
             drawPath(
                 path = arrowPath,
-                color = ElectricCyan,
+                color = primary,
                 style = Stroke(width = 7f, cap = StrokeCap.Round)
             )
             drawLine(
-                color = AuroraViolet,
+                color = secondary,
                 start = Offset(cx - boxSide * 0.18f, cy + boxSide * 0.27f),
                 end = Offset(cx + boxSide * 0.18f, cy + boxSide * 0.27f),
                 strokeWidth = 6f,
@@ -408,49 +441,130 @@ fun AnimatedAudioVisualizer(
     isPlaying: Boolean,
     progress: Float,
     modifier: Modifier = Modifier,
-    barCount: Int = 34
+    style: VisualizerStyle = VisualizerStyle.SPECTRUM_BARS,
+    barCount: Int = 36
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "visualizer")
     val phase by infiniteTransition.animateFloat(
         initialValue = 0f,
-        targetValue = (2 * Math.PI).toFloat(),
+        targetValue = (2 * PI).toFloat(),
         animationSpec = infiniteRepeatable(
-            animation = tween(1500, easing = LinearEasing)
+            animation = tween(1600, easing = LinearEasing)
         ),
         label = "viz_phase"
     )
 
     val activeColor = MaterialTheme.colorScheme.primary
     val secondaryColor = MaterialTheme.colorScheme.secondary
-    val inactiveColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+    val tertiaryColor = MaterialTheme.colorScheme.tertiary
+    val inactiveColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.42f)
 
     Canvas(modifier = modifier) {
-        val barWidth = size.width / (barCount * 1.7f)
-        val gap = (size.width - barCount * barWidth) / (barCount - 1).coerceAtLeast(1)
-        val maxH = size.height
+        when (style) {
+            VisualizerStyle.SPECTRUM_BARS -> {
+                val barWidth = size.width / (barCount * 1.65f)
+                val gap = (size.width - barCount * barWidth) / (barCount - 1).coerceAtLeast(1)
+                val maxH = size.height
 
-        for (i in 0 until barCount) {
-            val normalizedPos = i.toFloat() / barCount.toFloat()
-            val wave = if (isPlaying) {
-                0.35f + 0.65f * ((sin(phase + i * 0.6f) + 1f) / 2f)
-            } else {
-                0.25f + 0.35f * ((sin(i * 0.85f) + 1f) / 2f)
+                for (i in 0 until barCount) {
+                    val normalizedPos = i.toFloat() / barCount.toFloat()
+                    val harmonic = sin(phase * 2f + i * 0.35f) * 0.18f
+                    val wave = if (isPlaying) {
+                        (0.32f + 0.56f * ((sin(phase + i * 0.58f) + 1f) / 2f) + harmonic).coerceIn(0.18f, 1f)
+                    } else {
+                        0.22f + 0.30f * ((sin(i * 0.85f) + 1f) / 2f)
+                    }
+                    val barH = (maxH * wave).coerceAtLeast(8f)
+                    val x = i * (barWidth + gap)
+                    val y = (maxH - barH) / 2f
+                    val isPassed = normalizedPos <= progress
+
+                    drawRoundRect(
+                        brush = if (isPassed) {
+                            Brush.verticalGradient(listOf(activeColor, secondaryColor, tertiaryColor))
+                        } else {
+                            Brush.verticalGradient(listOf(inactiveColor, inactiveColor.copy(alpha = 0.25f)))
+                        },
+                        topLeft = Offset(x, y),
+                        size = Size(barWidth, barH),
+                        cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f)
+                    )
+                }
             }
-            val barH = (maxH * wave).coerceAtLeast(8f)
-            val x = i * (barWidth + gap)
-            val y = (maxH - barH) / 2f
-            val isPassed = normalizedPos <= progress
 
-            drawRoundRect(
-                brush = if (isPassed) {
-                    Brush.verticalGradient(listOf(activeColor, secondaryColor))
-                } else {
-                    Brush.verticalGradient(listOf(inactiveColor, inactiveColor))
-                },
-                topLeft = Offset(x, y),
-                size = Size(barWidth, barH),
-                cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f)
-            )
+            VisualizerStyle.ORBITAL_RING -> {
+                val center = Offset(size.width / 2f, size.height / 2f)
+                val baseRadius = (minOf(size.width, size.height) * 0.34f).coerceAtLeast(14f)
+                val spokes = 42
+                for (i in 0 until spokes) {
+                    val angle = (2 * PI * i / spokes).toFloat()
+                    val amp = if (isPlaying) {
+                        0.28f + 0.72f * ((sin(phase * 2f + i * 0.55f) + 1f) / 2f)
+                    } else {
+                        0.22f
+                    }
+                    val innerR = baseRadius * 0.72f
+                    val outerR = innerR + baseRadius * 0.65f * amp
+                    val start = Offset(
+                        center.x + cos(angle) * innerR,
+                        center.y + sin(angle) * innerR
+                    )
+                    val end = Offset(
+                        center.x + cos(angle) * outerR,
+                        center.y + sin(angle) * outerR
+                    )
+                    val color = if (i % 2 == 0) activeColor else secondaryColor
+                    drawLine(
+                        color = if (isPlaying) color else color.copy(alpha = 0.45f),
+                        start = start,
+                        end = end,
+                        strokeWidth = 4.5f,
+                        cap = StrokeCap.Round
+                    )
+                }
+                drawCircle(
+                    brush = Brush.sweepGradient(listOf(activeColor, secondaryColor, tertiaryColor, activeColor)),
+                    radius = baseRadius * 0.58f,
+                    center = center,
+                    style = Stroke(width = 3f)
+                )
+            }
+
+            VisualizerStyle.DUAL_WAVE -> {
+                val midY = size.height / 2f
+                val step = 6f
+                val path1 = Path()
+                val path2 = Path()
+                var x = 0f
+                var first = true
+                while (x <= size.width) {
+                    val normX = x / size.width
+                    val envelope = sin(normX * PI).toFloat()
+                    val amp1 = if (isPlaying) size.height * 0.40f * envelope else size.height * 0.14f * envelope
+                    val amp2 = if (isPlaying) size.height * 0.30f * envelope else size.height * 0.10f * envelope
+                    val y1 = midY + sin(normX * 12f + phase) * amp1
+                    val y2 = midY + sin(normX * 9f - phase * 1.3f) * amp2
+                    if (first) {
+                        path1.moveTo(x, y1)
+                        path2.moveTo(x, y2)
+                        first = false
+                    } else {
+                        path1.lineTo(x, y1)
+                        path2.lineTo(x, y2)
+                    }
+                    x += step
+                }
+                drawPath(
+                    path = path1,
+                    brush = Brush.horizontalGradient(listOf(activeColor, secondaryColor)),
+                    style = Stroke(width = 5f, cap = StrokeCap.Round)
+                )
+                drawPath(
+                    path = path2,
+                    brush = Brush.horizontalGradient(listOf(secondaryColor, tertiaryColor)),
+                    style = Stroke(width = 3.5f, cap = StrokeCap.Round)
+                )
+            }
         }
     }
 }

@@ -4,11 +4,11 @@
     <string name="company_name">Traxxion Tech</string>
     <string name="developer_website">https://traxxiontech.com</string>
     <string name="developer_email">ceo@stinger.co.zw</string>
-    <string name="developer_whatsapp">+263716857999</string>
-    <string name="country_origin">Made in Zimbabwe 🇿🇼</string>
+    <string name="developer_phone">+263716857999</string>
+    <string name="country_origin">Made in Zimbabwe</string>
     <string name="copyright_notice">© 2026 Traxxion Tech</string>
-    <string name="splash_tagline">Fast Social Media Downloader &amp; Media Player</string>
-    <string name="legal_notice">Please download only media you own or have permission to save, and respect the terms of service of the platforms you use.</string>
+    <string name="splash_tagline">Smart Media Downloader &amp; Offline Player</string>
+    <string name="legal_notice">Please download only media you own or have permission to save, and respect content owners\' rights and applicable terms.</string>
     <string name="download_channel_name">SaveBox Downloads</string>
     <string name="download_channel_desc">Shows live progress for active media downloads</string>
     <string name="playback_channel_name">SaveBox Media Player</string>

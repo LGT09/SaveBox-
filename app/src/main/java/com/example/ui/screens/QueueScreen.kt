@@ -45,10 +45,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.example.R
 import com.example.data.local.DownloadEntity
-import com.example.model.MediaPlatform
 import com.example.ui.components.FormatUtils
 import com.example.ui.components.LiquidGlassCard
-import com.example.ui.components.PlatformBadgeChip
+import com.example.ui.components.MediaSourceBadgeChip
 import com.example.ui.theme.EmeraldMint
 import com.example.ui.viewmodel.MainViewModel
 
@@ -175,7 +174,7 @@ private fun QueueDownloadCard(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    PlatformBadgeChip(platform = MediaPlatform.fromString(item.platform))
+                    MediaSourceBadgeChip(label = item.sourceHost)
                     Text(
                         text = item.qualityLabel,
                         style = MaterialTheme.typography.labelSmall,

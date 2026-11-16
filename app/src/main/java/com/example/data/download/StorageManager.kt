@@ -6,7 +6,6 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
-import com.example.model.MediaPlatform
 import com.example.model.MediaType
 import com.example.model.StorageFolderBreakdown
 import java.io.File
@@ -17,13 +16,7 @@ class StorageManager(private val context: Context) {
         val ALL_SAVEBOX_FOLDERS = listOf(
             "Videos",
             "Music",
-            "Instagram",
-            "TikTok",
-            "Facebook",
-            "Twitter",
-            "Spotify",
-            "Threads",
-            "Pinterest",
+            "Images",
             "Downloads",
             "Favorites"
         )
@@ -41,33 +34,24 @@ class StorageManager(private val context: Context) {
         }
     }
 
-    fun resolveTargetFolder(platform: MediaPlatform, mediaType: MediaType, customFolder: String?): String {
-        if (!customFolder.isNullOrBlank() && customFolder != "Auto by Platform") {
+    fun resolveTargetFolder(mediaType: MediaType, customFolder: String?): String {
+        if (!customFolder.isNullOrBlank() && customFolder != "Auto by Type") {
             return customFolder
         }
-        return when (platform) {
-            MediaPlatform.INSTAGRAM -> "Instagram"
-            MediaPlatform.TIKTOK -> "TikTok"
-            MediaPlatform.FACEBOOK -> "Facebook"
-            MediaPlatform.TWITTER -> "Twitter"
-            MediaPlatform.SPOTIFY -> "Spotify"
-            MediaPlatform.THREADS -> "Threads"
-            MediaPlatform.PINTEREST -> "Pinterest"
-            MediaPlatform.SOUNDCLOUD -> "Music"
-            MediaPlatform.YOUTUBE, MediaPlatform.YOUTUBE_PLAYLIST, MediaPlatform.LIKEE ->
-                if (mediaType == MediaType.AUDIO) "Music" else "Videos"
-            MediaPlatform.WHATSAPP_STATUS -> "Favorites"
-            else -> when (mediaType) {
-                MediaType.AUDIO -> "Music"
-                MediaType.VIDEO -> "Videos"
-                MediaType.IMAGE -> "Downloads"
-            }
+        return when (mediaType) {
+            MediaType.AUDIO -> "Music"
+            MediaType.VIDEO -> "Videos"
+            MediaType.IMAGE -> "Images"
         }
     }
 
     fun getTargetFile(folderCategory: String, fileName: String): File {
         val dir = File(getSaveBoxRootDir(), folderCategory).apply { if (!exists()) mkdirs() }
         return File(dir, fileName)
+    }
+
+    fun getCoversDir(): File {
+        return File(context.filesDir, "cover_art").apply { if (!exists()) mkdirs() }
     }
 
     fun getStorageBreakdown(): List<StorageFolderBreakdown> {

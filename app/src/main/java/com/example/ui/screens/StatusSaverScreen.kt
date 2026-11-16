@@ -60,7 +60,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.example.R
-import com.example.model.WhatsAppStatusItem
+import com.example.model.LocalFolderMediaItem
 import com.example.ui.components.FormatUtils
 import com.example.ui.components.LiquidGlassCard
 import com.example.ui.theme.EmeraldMint
@@ -72,50 +72,50 @@ fun StatusSaverScreen(
 ) {
     val context = LocalContext.current
     val settings by viewModel.settings.collectAsStateWithLifecycle()
-    val statusItems by viewModel.statusItems.collectAsStateWithLifecycle()
-    val searchQuery by viewModel.statusSearchQuery.collectAsStateWithLifecycle()
-    val isScanning by viewModel.isScanningStatuses.collectAsStateWithLifecycle()
+    val folderItems by viewModel.folderMediaItems.collectAsStateWithLifecycle()
+    val searchQuery by viewModel.folderSearchQuery.collectAsStateWithLifecycle()
+    val isScanning by viewModel.isScanningFolders.collectAsStateWithLifecycle()
 
-    var previewItem by remember { mutableStateOf<WhatsAppStatusItem?>(null) }
+    var previewItem by remember { mutableStateOf<LocalFolderMediaItem?>(null) }
 
-    val whatsAppFolderPicker = rememberLauncherForActivityResult(
+    val primaryFolderPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
     ) { uri: Uri? ->
         if (uri != null) {
             val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
             runCatching { context.contentResolver.takePersistableUriPermission(uri, flags) }
-            viewModel.onWhatsAppFolderGranted(uri, isBusiness = false)
+            viewModel.onFolderGranted(uri, isSecondary = false)
         }
     }
 
-    val businessFolderPicker = rememberLauncherForActivityResult(
+    val secondaryFolderPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
     ) { uri: Uri? ->
         if (uri != null) {
             val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
             runCatching { context.contentResolver.takePersistableUriPermission(uri, flags) }
-            viewModel.onWhatsAppFolderGranted(uri, isBusiness = true)
+            viewModel.onFolderGranted(uri, isSecondary = true)
         }
     }
 
-    val filteredStatuses = remember(statusItems, searchQuery) {
-        if (searchQuery.isBlank()) statusItems
-        else statusItems.filter {
+    val filteredItems = remember(folderItems, searchQuery) {
+        if (searchQuery.isBlank()) folderItems
+        else folderItems.filter {
             it.name.contains(searchQuery, ignoreCase = true) ||
                 it.sourceLabel.contains(searchQuery, ignoreCase = true)
         }
     }
 
-    fun shareStatus(item: WhatsAppStatusItem) {
+    fun shareItem(item: LocalFolderMediaItem) {
         val shareIntent = Intent(Intent.ACTION_SEND).apply {
             type = item.mimeType
             putExtra(Intent.EXTRA_STREAM, Uri.parse(item.uriString))
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         runCatching {
-            context.startActivity(Intent.createChooser(shareIntent, "Share Status"))
+            context.startActivity(Intent.createChooser(shareIntent, "Share Media"))
         }.onFailure {
-            viewModel.showMessage("Unable to share this status")
+            viewModel.showMessage("Unable to share this media file")
         }
     }
 
@@ -135,21 +135,21 @@ fun StatusSaverScreen(
             ) {
                 Column {
                     Text(
-                        text = "Status Saver",
+                        text = "Folder Importer",
                         style = MaterialTheme.typography.headlineMedium,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "WhatsApp & WhatsApp Business (.Statuses)",
+                        text = "Scoped local folder media browser",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 IconButton(
-                    onClick = { viewModel.refreshWhatsAppStatuses() },
-                    modifier = Modifier.testTag("status_refresh_button")
+                    onClick = { viewModel.refreshFolderMedia() },
+                    modifier = Modifier.testTag("folder_refresh_button")
                 ) {
-                    Icon(Icons.Filled.Refresh, contentDescription = "Refresh Statuses")
+                    Icon(Icons.Filled.Refresh, contentDescription = "Refresh Folder Media")
                 }
             }
 
@@ -158,7 +158,6 @@ fun StatusSaverScreen(
                 Spacer(modifier = Modifier.height(8.dp))
             }
 
-            // Explicit permission / folder selection card
             LiquidGlassCard(cornerRadius = 22.dp, contentPadding = 14.dp) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
@@ -174,7 +173,7 @@ fun StatusSaverScreen(
                 }
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
-                    text = "SaveBox never accesses device folders without your permission. Grant access to Android/media/com.whatsapp/WhatsApp/Media/.Statuses (or WhatsApp Business).",
+                    text = "SaveBox never accesses device folders without your explicit selection via Android's system folder picker.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -184,26 +183,26 @@ fun StatusSaverScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Button(
-                        onClick = { whatsAppFolderPicker.launch(null) },
+                        onClick = { primaryFolderPicker.launch(null) },
                         modifier = Modifier
                             .weight(1f)
-                            .testTag("grant_whatsapp_button"),
+                            .testTag("grant_primary_folder_button"),
                         shape = RoundedCornerShape(14.dp)
                     ) {
                         Icon(Icons.Filled.FolderOpen, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text(if (settings.whatsAppTreeUri != null) "WA Linked" else "WhatsApp")
+                        Text(if (settings.customFolderTreeUri != null) "Primary Linked" else "Primary Folder")
                     }
                     OutlinedButton(
-                        onClick = { businessFolderPicker.launch(null) },
+                        onClick = { secondaryFolderPicker.launch(null) },
                         modifier = Modifier
                             .weight(1f)
-                            .testTag("grant_wa_business_button"),
+                            .testTag("grant_secondary_folder_button"),
                         shape = RoundedCornerShape(14.dp)
                     ) {
                         Icon(Icons.Filled.FolderOpen, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text(if (settings.whatsAppBusinessTreeUri != null) "WA Biz Linked" else "WA Business")
+                        Text(if (settings.secondaryFolderTreeUri != null) "Secondary Linked" else "Secondary Folder")
                     }
                 }
             }
@@ -212,8 +211,8 @@ fun StatusSaverScreen(
 
             OutlinedTextField(
                 value = searchQuery,
-                onValueChange = { viewModel.setStatusSearchQuery(it) },
-                placeholder = { Text("Search statuses by filename or source...") },
+                onValueChange = { viewModel.setFolderSearchQuery(it) },
+                placeholder = { Text("Filter media by filename or folder...") },
                 leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
                 singleLine = true,
                 shape = RoundedCornerShape(16.dp),
@@ -222,23 +221,23 @@ fun StatusSaverScreen(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            if (filteredStatuses.isEmpty()) {
+            if (filteredItems.isEmpty()) {
                 LiquidGlassCard(cornerRadius = 22.dp, contentPadding = 22.dp) {
                     Column(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            text = if (settings.whatsAppTreeUri == null && settings.whatsAppBusinessTreeUri == null) {
-                                "Select your WhatsApp .Statuses folder above to view statuses"
+                            text = if (settings.customFolderTreeUri == null && settings.secondaryFolderTreeUri == null) {
+                                "Select a folder above to browse and import local videos or images"
                             } else {
-                                "No statuses found in the selected folder"
+                                "No videos or images found in the selected folder"
                             },
                             style = MaterialTheme.typography.titleSmall
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "View a status in WhatsApp first, then tap Refresh.",
+                            text = "Tap Refresh after adding media to your linked folder.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -251,7 +250,7 @@ fun StatusSaverScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    items(filteredStatuses, key = { it.uriString }) { item ->
+                    items(filteredItems, key = { it.uriString }) { item ->
                         LiquidGlassCard(
                             cornerRadius = 18.dp,
                             contentPadding = 8.dp,
@@ -272,7 +271,7 @@ fun StatusSaverScreen(
                                 if (item.isVideo) {
                                     Icon(
                                         imageVector = Icons.Filled.PlayCircle,
-                                        contentDescription = "Video Status",
+                                        contentDescription = "Video Item",
                                         tint = MaterialTheme.colorScheme.primary,
                                         modifier = Modifier
                                             .align(Alignment.Center)
@@ -308,31 +307,31 @@ fun StatusSaverScreen(
                                 )
                                 Row {
                                     IconButton(
-                                        onClick = { shareStatus(item) },
+                                        onClick = { shareItem(item) },
                                         modifier = Modifier.size(36.dp)
                                     ) {
-                                        Icon(Icons.Filled.Share, contentDescription = "Share Status", modifier = Modifier.size(18.dp))
+                                        Icon(Icons.Filled.Share, contentDescription = "Share Media", modifier = Modifier.size(18.dp))
                                     }
                                     if (item.isAlreadySaved) {
                                         IconButton(
-                                            onClick = { viewModel.deleteSavedStatusCopy(item) },
+                                            onClick = { viewModel.deleteImportedFolderCopy(item) },
                                             modifier = Modifier.size(36.dp)
                                         ) {
                                             Icon(
                                                 Icons.Filled.CheckCircle,
-                                                contentDescription = "Saved (Tap to delete saved copy)",
+                                                contentDescription = "Imported (Tap to remove saved copy)",
                                                 tint = EmeraldMint,
                                                 modifier = Modifier.size(18.dp)
                                             )
                                         }
                                     } else {
                                         IconButton(
-                                            onClick = { viewModel.saveWhatsAppStatus(item) },
+                                            onClick = { viewModel.importFolderMedia(item) },
                                             modifier = Modifier.size(36.dp)
                                         ) {
                                             Icon(
                                                 Icons.Filled.Download,
-                                                contentDescription = "Save Status",
+                                                contentDescription = "Import to SaveBox",
                                                 tint = MaterialTheme.colorScheme.primary,
                                                 modifier = Modifier.size(18.dp)
                                             )
@@ -372,26 +371,26 @@ fun StatusSaverScreen(
             confirmButton = {
                 if (item.isAlreadySaved) {
                     TextButton(onClick = {
-                        viewModel.deleteSavedStatusCopy(item)
+                        viewModel.deleteImportedFolderCopy(item)
                         previewItem = null
                     }) {
                         Icon(Icons.Filled.Delete, contentDescription = null)
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Delete Saved Copy")
+                        Text("Delete Imported Copy")
                     }
                 } else {
                     TextButton(onClick = {
-                        viewModel.saveWhatsAppStatus(item)
+                        viewModel.importFolderMedia(item)
                         previewItem = null
                     }) {
                         Icon(Icons.Filled.Download, contentDescription = null)
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Save to Gallery")
+                        Text("Import to Vault")
                     }
                 }
             },
             dismissButton = {
-                TextButton(onClick = { shareStatus(item) }) {
+                TextButton(onClick = { shareItem(item) }) {
                     Text("Share")
                 }
             }

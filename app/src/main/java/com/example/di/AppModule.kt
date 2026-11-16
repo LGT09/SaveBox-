@@ -4,11 +4,14 @@ import android.content.Context
 import com.example.data.download.DownloadRepository
 import com.example.data.download.StorageManager
 import com.example.data.local.DownloadDao
+import com.example.data.local.DownloadQueueDao
+import com.example.data.local.MediaItemDao
 import com.example.data.local.MediaMetadataDao
 import com.example.data.local.PlaylistDao
 import com.example.data.local.SaveBoxDatabase
 import com.example.data.local.SearchHistoryDao
 import com.example.data.local.SettingsDataStore
+import com.example.data.status.LocalMediaScanner
 import com.example.data.status.StatusSaverRepository
 import com.example.player.MediaControllerManager
 import dagger.Module
@@ -31,6 +34,14 @@ object AppModule {
     @Provides
     @Singleton
     fun provideDownloadDao(database: SaveBoxDatabase): DownloadDao = database.downloadDao()
+
+    @Provides
+    @Singleton
+    fun provideMediaItemDao(database: SaveBoxDatabase): MediaItemDao = database.mediaItemDao()
+
+    @Provides
+    @Singleton
+    fun provideDownloadQueueDao(database: SaveBoxDatabase): DownloadQueueDao = database.downloadQueueDao()
 
     @Provides
     @Singleton
@@ -61,6 +72,8 @@ object AppModule {
     fun provideDownloadRepository(
         @ApplicationContext context: Context,
         downloadDao: DownloadDao,
+        mediaItemDao: MediaItemDao,
+        downloadQueueDao: DownloadQueueDao,
         mediaMetadataDao: MediaMetadataDao,
         searchHistoryDao: SearchHistoryDao,
         playlistDao: PlaylistDao,
@@ -69,6 +82,8 @@ object AppModule {
         return DownloadRepository(
             context = context,
             downloadDao = downloadDao,
+            mediaItemDao = mediaItemDao,
+            downloadQueueDao = downloadQueueDao,
             mediaMetadataDao = mediaMetadataDao,
             searchHistoryDao = searchHistoryDao,
             playlistDao = playlistDao,
@@ -87,6 +102,22 @@ object AppModule {
             context = context,
             storageManager = storageManager,
             downloadDao = downloadDao
+        )
+    }
+
+    @Provides
+    @Singleton
+    fun provideLocalMediaScanner(
+        @ApplicationContext context: Context,
+        storageManager: StorageManager,
+        downloadDao: DownloadDao,
+        mediaItemDao: MediaItemDao
+    ): LocalMediaScanner {
+        return LocalMediaScanner(
+            context = context,
+            storageManager = storageManager,
+            downloadDao = downloadDao,
+            mediaItemDao = mediaItemDao
         )
     }
 

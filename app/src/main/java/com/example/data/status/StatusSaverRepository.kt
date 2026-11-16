@@ -6,9 +6,8 @@ import androidx.documentfile.provider.DocumentFile
 import com.example.data.download.StorageManager
 import com.example.data.local.DownloadDao
 import com.example.data.local.DownloadEntity
-import com.example.model.MediaPlatform
+import com.example.model.LocalFolderMediaItem
 import com.example.model.MediaType
-import com.example.model.WhatsAppStatusItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -20,19 +19,19 @@ class StatusSaverRepository(
     private val downloadDao: DownloadDao
 ) {
 
-    suspend fun scanStatuses(
-        whatsAppTreeUri: String?,
-        whatsAppBusinessTreeUri: String?
-    ): List<WhatsAppStatusItem> = withContext(Dispatchers.IO) {
-        val results = mutableListOf<WhatsAppStatusItem>()
+    suspend fun scanFolderMedia(
+        primaryTreeUri: String?,
+        secondaryTreeUri: String?
+    ): List<LocalFolderMediaItem> = withContext(Dispatchers.IO) {
+        val results = mutableListOf<LocalFolderMediaItem>()
         val savedDir = File(storageManager.getSaveBoxRootDir(), "Favorites")
         val savedNames = savedDir.listFiles()?.map { it.name }?.toSet() ?: emptySet()
 
-        whatsAppTreeUri?.let { uriStr ->
-            scanDocumentTree(uriStr, "WhatsApp", savedNames, results)
+        primaryTreeUri?.let { uriStr ->
+            scanDocumentTree(uriStr, "Primary Folder", savedNames, results)
         }
-        whatsAppBusinessTreeUri?.let { uriStr ->
-            scanDocumentTree(uriStr, "WhatsApp Business", savedNames, results)
+        secondaryTreeUri?.let { uriStr ->
+            scanDocumentTree(uriStr, "Secondary Folder", savedNames, results)
         }
 
         results.sortedByDescending { it.lastModified }
@@ -42,17 +41,16 @@ class StatusSaverRepository(
         uriString: String,
         sourceLabel: String,
         savedNames: Set<String>,
-        out: MutableList<WhatsAppStatusItem>
+        out: MutableList<LocalFolderMediaItem>
     ) {
         try {
             val treeUri = Uri.parse(uriString)
             val rootDoc = DocumentFile.fromTreeUri(context, treeUri) ?: return
             if (!rootDoc.canRead()) return
 
-            // If user picked parent WhatsApp folder, try resolving Media/.Statuses automatically
-            val statusDir = resolveStatusesSubdir(rootDoc) ?: rootDoc
+            val targetDir = rootDoc.findFile(".Statuses")?.takeIf { it.isDirectory } ?: rootDoc
 
-            statusDir.listFiles().forEach { file ->
+            targetDir.listFiles().forEach { file ->
                 val name = file.name ?: return@forEach
                 if (name.startsWith(".") || !file.isFile) return@forEach
                 val lower = name.lowercase()
@@ -62,7 +60,7 @@ class StatusSaverRepository(
 
                 val mime = file.type ?: if (isVideo) "video/mp4" else "image/jpeg"
                 out.add(
-                    WhatsAppStatusItem(
+                    LocalFolderMediaItem(
                         uriString = file.uri.toString(),
                         name = name,
                         mimeType = mime,
@@ -70,7 +68,7 @@ class StatusSaverRepository(
                         sizeBytes = file.length(),
                         lastModified = file.lastModified(),
                         sourceLabel = sourceLabel,
-                        isAlreadySaved = savedNames.contains("WA_$name")
+                        isAlreadySaved = savedNames.contains("IMP_$name")
                     )
                 )
             }
@@ -79,19 +77,10 @@ class StatusSaverRepository(
         }
     }
 
-    private fun resolveStatusesSubdir(root: DocumentFile): DocumentFile? {
-        if (root.name.equals(".Statuses", ignoreCase = true)) return root
-        root.findFile(".Statuses")?.let { if (it.isDirectory) return it }
-        root.findFile("Media")?.findFile(".Statuses")?.let { if (it.isDirectory) return it }
-        root.findFile("WhatsApp")?.findFile("Media")?.findFile(".Statuses")?.let { if (it.isDirectory) return it }
-        root.findFile("WhatsApp Business")?.findFile("Media")?.findFile(".Statuses")?.let { if (it.isDirectory) return it }
-        return null
-    }
-
-    suspend fun saveStatusToGallery(item: WhatsAppStatusItem): DownloadEntity? = withContext(Dispatchers.IO) {
+    suspend fun importMediaToVault(item: LocalFolderMediaItem): DownloadEntity? = withContext(Dispatchers.IO) {
         return@withContext try {
             val sourceUri = Uri.parse(item.uriString)
-            val destFileName = "WA_${item.name}"
+            val destFileName = "IMP_${item.name}"
             val targetFile = storageManager.getTargetFile("Favorites", destFileName)
 
             context.contentResolver.openInputStream(sourceUri)?.use { input ->
@@ -104,13 +93,13 @@ class StatusSaverRepository(
             val mediaStoreUri = storageManager.exportToMediaStore(targetFile, mediaType, item.mimeType)
 
             val entity = DownloadEntity(
-                title = "${item.sourceLabel} Status",
+                title = item.name.substringBeforeLast('.'),
                 fileName = destFileName,
                 sourceUrl = item.uriString,
                 downloadUrl = item.uriString,
-                platform = MediaPlatform.WHATSAPP_STATUS.name,
+                sourceHost = "local_folder",
                 mediaType = mediaType.name,
-                qualityLabel = if (item.isVideo) "Status Video" else "Status Photo",
+                qualityLabel = if (item.isVideo) "Imported Video" else "Imported Photo",
                 author = item.sourceLabel,
                 thumbnailUrl = targetFile.absolutePath,
                 fileSizeBytes = targetFile.length(),
@@ -128,8 +117,8 @@ class StatusSaverRepository(
         }
     }
 
-    suspend fun deleteSavedCopy(item: WhatsAppStatusItem): Boolean = withContext(Dispatchers.IO) {
-        val savedFile = storageManager.getTargetFile("Favorites", "WA_${item.name}")
+    suspend fun deleteImportedCopy(item: LocalFolderMediaItem): Boolean = withContext(Dispatchers.IO) {
+        val savedFile = storageManager.getTargetFile("Favorites", "IMP_${item.name}")
         return@withContext if (savedFile.exists()) savedFile.delete() else false
     }
 }

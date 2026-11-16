@@ -9,18 +9,22 @@ import androidx.room.PrimaryKey
 import androidx.room.Relation
 
 /**
- * Room entity storing download history, file paths, and live download status.
+ * Room entity managing persistent downloaded media metadata:
+ * title, URL, local file path, download timestamp, quality, size, and status.
  */
-@Entity(tableName = "downloads")
+@Entity(
+    tableName = "downloads",
+    indices = [Index(value = ["createdAt"]), Index(value = ["status"])]
+)
 data class DownloadEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val title: String,
-    val fileName: String,
+    @ColumnInfo(name = "title") val title: String,
+    @ColumnInfo(name = "fileName") val fileName: String,
     @ColumnInfo(name = "sourceUrl") val sourceUrl: String,
     @ColumnInfo(name = "downloadUrl") val downloadUrl: String,
-    val platform: String,
-    val mediaType: String,
-    val qualityLabel: String,
+    @ColumnInfo(name = "sourceHost") val sourceHost: String = "web",
+    @ColumnInfo(name = "mediaType") val mediaType: String,
+    @ColumnInfo(name = "qualityLabel") val qualityLabel: String,
     val author: String? = null,
     val thumbnailUrl: String? = null,
     val durationMs: Long = 0L,
@@ -34,7 +38,7 @@ data class DownloadEntity(
     val playCount: Int = 0,
     val lastPlayedAt: Long = 0L,
     val playbackPositionMs: Long = 0L,
-    val createdAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(name = "createdAt") val createdAt: Long = System.currentTimeMillis(),
     val workId: String? = null,
     val errorMessage: String? = null
 ) {
@@ -45,7 +49,62 @@ data class DownloadEntity(
 }
 
 /**
- * Room entity storing analyzed media metadata alongside URL, title, file path, and download status.
+ * Room entity for downloaded or device-scanned media files (Photos, Videos, Songs)
+ * storing file path, cover art path, title, type, and timestamp.
+ */
+@Entity(
+    tableName = "media_items",
+    indices = [
+        Index(value = ["filePath"], unique = true),
+        Index(value = ["mediaType"]),
+        Index(value = ["timestamp"])
+    ]
+)
+data class MediaItem(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    @ColumnInfo(name = "title") val title: String,
+    @ColumnInfo(name = "url") val url: String,
+    @ColumnInfo(name = "filePath") val filePath: String,
+    @ColumnInfo(name = "coverArtPath") val coverArtPath: String? = null,
+    @ColumnInfo(name = "mediaType") val mediaType: String,
+    @ColumnInfo(name = "mimeType") val mimeType: String = "video/mp4",
+    @ColumnInfo(name = "author") val author: String? = null,
+    @ColumnInfo(name = "qualityLabel") val qualityLabel: String = "Original",
+    @ColumnInfo(name = "durationMs") val durationMs: Long = 0L,
+    @ColumnInfo(name = "fileSizeBytes") val fileSizeBytes: Long = 0L,
+    @ColumnInfo(name = "timestamp") val timestamp: Long = System.currentTimeMillis()
+)
+
+/**
+ * Room entity tracking active/queued background downloads and live byte progress state.
+ */
+@Entity(
+    tableName = "download_queue",
+    indices = [
+        Index(value = ["downloadId"], unique = true),
+        Index(value = ["status"])
+    ]
+)
+data class DownloadQueue(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    @ColumnInfo(name = "downloadId") val downloadId: Long,
+    @ColumnInfo(name = "title") val title: String,
+    @ColumnInfo(name = "url") val url: String,
+    @ColumnInfo(name = "downloadUrl") val downloadUrl: String,
+    @ColumnInfo(name = "filePath") val filePath: String? = null,
+    @ColumnInfo(name = "status") val status: String = "QUEUED",
+    @ColumnInfo(name = "downloadedBytes") val downloadedBytes: Long = 0L,
+    @ColumnInfo(name = "totalBytes") val totalBytes: Long = 0L,
+    @ColumnInfo(name = "progressPercent") val progressPercent: Int = 0,
+    @ColumnInfo(name = "workId") val workId: String? = null,
+    @ColumnInfo(name = "errorMessage") val errorMessage: String? = null,
+    @ColumnInfo(name = "createdAt") val createdAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(name = "updatedAt") val updatedAt: Long = System.currentTimeMillis()
+)
+
+/**
+ * Room entity storing analyzed media metadata:
+ * URL, title, file path, download status, quality, size, and timestamp.
  */
 @Entity(
     tableName = "media_metadata",
@@ -53,26 +112,26 @@ data class DownloadEntity(
 )
 data class MediaMetadataEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val url: String,
-    val title: String,
-    val filePath: String? = null,
-    val downloadStatus: String = "ANALYZED",
-    val platform: String,
-    val mediaType: String,
+    @ColumnInfo(name = "url") val url: String,
+    @ColumnInfo(name = "title") val title: String,
+    @ColumnInfo(name = "filePath") val filePath: String? = null,
+    @ColumnInfo(name = "downloadStatus") val downloadStatus: String = "ANALYZED",
+    @ColumnInfo(name = "sourceHost") val sourceHost: String = "web",
+    @ColumnInfo(name = "mediaType") val mediaType: String,
     val author: String? = null,
     val thumbnailUrl: String? = null,
     val durationMs: Long = 0L,
     val durationText: String? = null,
     val qualityLabel: String? = null,
     val fileSizeBytes: Long = 0L,
-    val updatedAt: Long = System.currentTimeMillis()
+    @ColumnInfo(name = "updatedAt") val updatedAt: Long = System.currentTimeMillis()
 )
 
 @Entity(tableName = "search_history")
 data class SearchHistoryEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val query: String,
-    val platformScope: String,
+    val searchScope: String,
     val isUrl: Boolean,
     val timestamp: Long = System.currentTimeMillis()
 )

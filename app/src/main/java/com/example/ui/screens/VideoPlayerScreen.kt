@@ -10,15 +10,19 @@ import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
 import android.util.Rational
-import android.view.ViewGroup
-import android.widget.FrameLayout
+import android.view.LayoutInflater
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -38,12 +42,15 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.BrightnessHigh
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
+import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.PlayArrow
@@ -52,11 +59,11 @@ import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Subtitles
-import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -64,7 +71,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -73,12 +79,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -86,16 +95,20 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import androidx.media3.common.C
-import androidx.media3.common.MediaItem
-import androidx.media3.common.MimeTypes
-import androidx.media3.common.Player
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import com.example.R
 import com.example.data.local.DownloadEntity
+import com.example.model.VisualizerStyle
+import com.example.ui.components.AnimatedAudioVisualizer
 import com.example.ui.components.FormatUtils
+import com.example.ui.theme.AuroraViolet
+import com.example.ui.theme.CoralAlert
+import com.example.ui.theme.ElectricCyan
+import com.example.ui.theme.GlassBorderLight
+import com.example.ui.viewmodel.MediaPlayerViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -109,32 +122,18 @@ fun VideoPlayerScreen(
     playlist: List<DownloadEntity>,
     autoResumePosition: Boolean,
     defaultSpeed: Float,
-    onSavePosition: (Long, Long, Boolean) -> Unit,
-    onBack: () -> Unit
+    visualizerStyle: VisualizerStyle = VisualizerStyle.SPECTRUM_BARS,
+    onBack: () -> Unit,
+    playerViewModel: MediaPlayerViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
     val scope = rememberCoroutineScope()
-
-    val videos = remember(playlist, initialVideo) {
-        playlist.ifEmpty { listOf(initialVideo) }
-    }
-    var currentIndex by remember(initialVideo) {
-        mutableIntStateOf(videos.indexOfFirst { it.id == initialVideo.id }.coerceAtLeast(0))
-    }
-    val currentVideo = videos.getOrElse(currentIndex) { initialVideo }
+    val uiState by playerViewModel.uiState.collectAsStateWithLifecycle()
 
     var showControls by remember { mutableStateOf(true) }
-    var isPlaying by remember { mutableStateOf(true) }
-    var positionMs by remember { mutableLongStateOf(if (autoResumePosition) currentVideo.playbackPositionMs else 0L) }
-    var durationMs by remember { mutableLongStateOf(currentVideo.durationMs) }
-    var playbackSpeed by remember { mutableFloatStateOf(defaultSpeed) }
-    var resizeModeIndex by remember { mutableIntStateOf(0) }
-    val resizeModes = listOf(
-        AspectRatioFrameLayout.RESIZE_MODE_FIT to "Fit",
-        AspectRatioFrameLayout.RESIZE_MODE_FILL to "Fill",
-        AspectRatioFrameLayout.RESIZE_MODE_ZOOM to "Zoom"
-    )
+    var showVisualizer by remember { mutableStateOf(false) }
+    var activeVisualizerStyle by remember(visualizerStyle) { mutableStateOf(visualizerStyle) }
     var isFullscreen by remember { mutableStateOf(false) }
     var pinchScale by remember { mutableFloatStateOf(1f) }
     var subtitleUri by remember { mutableStateOf<Uri?>(null) }
@@ -149,6 +148,13 @@ fun VideoPlayerScreen(
     var scrubTargetMs by remember { mutableLongStateOf(0L) }
     var previewBitmap by remember { mutableStateOf<Bitmap?>(null) }
 
+    val currentVideo = uiState.currentItem ?: initialVideo
+    val displayedPositionMs = if (isScrubbing) scrubTargetMs else uiState.positionMs
+    val durationMs = uiState.durationMs.coerceAtLeast(currentVideo.durationMs)
+    val resizeLabel = playerViewModel.resizeModes
+        .getOrElse(uiState.resizeModeIndex) { playerViewModel.resizeModes.first() }
+        .second
+
     val subtitlePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
@@ -157,53 +163,27 @@ fun VideoPlayerScreen(
         }
     }
 
-    val exoPlayer = remember {
-        ExoPlayer.Builder(context).build().apply {
-            setPlaybackSpeed(defaultSpeed)
-            playWhenReady = true
+    LaunchedEffect(initialVideo.id, subtitleUri) {
+        playerViewModel.loadMedia(
+            target = initialVideo,
+            playlist = playlist,
+            autoResume = autoResumePosition,
+            defaultSpeed = defaultSpeed,
+            subtitleUri = subtitleUri
+        )
+    }
+
+    // Auto-hide glass controls during active playback
+    LaunchedEffect(showControls, uiState.isPlaying, isScrubbing) {
+        if (showControls && uiState.isPlaying && !isScrubbing) {
+            delay(4200L)
+            showControls = false
         }
     }
 
-    LaunchedEffect(currentVideo, subtitleUri) {
-        val mediaUri = when {
-            !currentVideo.localFilePath.isNullOrBlank() && File(currentVideo.localFilePath).exists() ->
-                Uri.fromFile(File(currentVideo.localFilePath))
-            !currentVideo.localUri.isNullOrBlank() -> Uri.parse(currentVideo.localUri)
-            else -> Uri.parse(currentVideo.downloadUrl)
-        }
-        val builder = MediaItem.Builder().setUri(mediaUri)
-        subtitleUri?.let { sub ->
-            val subConfig = MediaItem.SubtitleConfiguration.Builder(sub)
-                .setMimeType(MimeTypes.APPLICATION_SUBRIP)
-                .setLanguage("en")
-                .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
-                .build()
-            builder.setSubtitleConfigurations(listOf(subConfig))
-        }
-        exoPlayer.setMediaItem(builder.build())
-        if (autoResumePosition && currentVideo.playbackPositionMs > 0L) {
-            exoPlayer.seekTo(currentVideo.playbackPositionMs)
-        }
-        exoPlayer.prepare()
-        exoPlayer.play()
-        onSavePosition(currentVideo.id, currentVideo.playbackPositionMs, true)
-    }
-
-    DisposableEffect(exoPlayer) {
-        val listener = object : Player.Listener {
-            override fun onIsPlayingChanged(playing: Boolean) {
-                isPlaying = playing
-            }
-
-            override fun onPlaybackStateChanged(playbackState: Int) {
-                if (exoPlayer.duration > 0L) durationMs = exoPlayer.duration
-            }
-        }
-        exoPlayer.addListener(listener)
+    DisposableEffect(Unit) {
         onDispose {
-            onSavePosition(currentVideo.id, exoPlayer.currentPosition, false)
-            exoPlayer.removeListener(listener)
-            exoPlayer.release()
+            playerViewModel.persistPosition()
             activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
             activity?.window?.let { win ->
                 val controller = WindowCompat.getInsetsController(win, win.decorView)
@@ -212,24 +192,14 @@ fun VideoPlayerScreen(
         }
     }
 
-    // Periodic progress ticker
-    LaunchedEffect(exoPlayer) {
-        while (true) {
-            if (!isScrubbing) {
-                positionMs = exoPlayer.currentPosition.coerceAtLeast(0L)
-                if (exoPlayer.duration > 0L) durationMs = exoPlayer.duration
-            }
-            delay(350L)
-        }
-    }
-
     // Extract thumbnail frame while scrubbing local file
-    LaunchedEffect(isScrubbing, scrubTargetMs) {
-        if (isScrubbing && !currentVideo.localFilePath.isNullOrBlank() && File(currentVideo.localFilePath).exists()) {
+    LaunchedEffect(isScrubbing, scrubTargetMs, currentVideo.localFilePath) {
+        val localPath = currentVideo.localFilePath
+        if (isScrubbing && !localPath.isNullOrBlank() && File(localPath).exists()) {
             val frame = withContext(Dispatchers.IO) {
                 val retriever = MediaMetadataRetriever()
                 try {
-                    retriever.setDataSource(currentVideo.localFilePath)
+                    retriever.setDataSource(localPath)
                     retriever.getFrameAtTime(scrubTargetMs * 1000L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
                 } catch (_: Throwable) {
                     null
@@ -244,7 +214,7 @@ fun VideoPlayerScreen(
     }
 
     BackHandler {
-        onSavePosition(currentVideo.id, exoPlayer.currentPosition, false)
+        playerViewModel.persistPosition()
         onBack()
     }
 
@@ -280,6 +250,14 @@ fun VideoPlayerScreen(
     }
 
     val audioManager = remember { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
+    val glassPanelBrush = remember {
+        Brush.linearGradient(
+            colors = listOf(
+                Color(0xB8111B36),
+                Color(0x8A0B1124)
+            )
+        )
+    }
 
     Box(
         modifier = Modifier
@@ -288,17 +266,16 @@ fun VideoPlayerScreen(
     ) {
         AndroidView(
             factory = { ctx ->
-                PlayerView(ctx).apply {
+                (LayoutInflater.from(ctx).inflate(R.layout.view_savebox_player, null, false) as PlayerView).apply {
                     useController = false
-                    player = exoPlayer
-                    layoutParams = FrameLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT
-                    )
+                    player = playerViewModel.player
                 }
             },
             update = { pv ->
-                pv.resizeMode = resizeModes[resizeModeIndex].first
+                pv.player = playerViewModel.player
+                pv.resizeMode = playerViewModel.resizeModes
+                    .getOrElse(uiState.resizeModeIndex) { playerViewModel.resizeModes.first() }
+                    .first
             },
             modifier = Modifier
                 .fillMaxSize()
@@ -318,8 +295,7 @@ fun VideoPlayerScreen(
                         onDoubleTap = { offset ->
                             val isRight = offset.x > size.width / 2f
                             val delta = if (isRight) 10_000L else -10_000L
-                            val target = (exoPlayer.currentPosition + delta).coerceIn(0L, durationMs.coerceAtLeast(1L))
-                            exoPlayer.seekTo(target)
+                            playerViewModel.seekBy(delta)
                             seekOverlayText = if (isRight) "+10s" else "-10s"
                             scope.launch {
                                 delay(750L)
@@ -367,21 +343,41 @@ fun VideoPlayerScreen(
                 }
         )
 
-        // Double-tap seek indicator
-        seekOverlayText?.let { label ->
+        // Error pill if playback fails
+        uiState.errorMessage?.let { err ->
             Surface(
-                shape = RoundedCornerShape(50),
-                color = Color.Black.copy(alpha = 0.65f),
-                modifier = Modifier.align(Alignment.Center)
+                shape = RoundedCornerShape(18.dp),
+                color = CoralAlert.copy(alpha = 0.90f),
+                border = BorderStroke(1.dp, GlassBorderLight),
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .systemBarsPadding()
+                    .padding(top = 74.dp, start = 20.dp, end = 20.dp)
             ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                Text(
+                    text = err,
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                )
+            }
+        }
+
+        // Glass double-tap seek indicator
+        seekOverlayText?.let { label ->
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .clip(RoundedCornerShape(50))
+                    .background(glassPanelBrush)
+                    .border(1.dp, GlassBorderLight, RoundedCornerShape(50))
+                    .padding(horizontal = 22.dp, vertical = 12.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         imageVector = if (label.startsWith("+")) Icons.Filled.FastForward else Icons.Filled.FastRewind,
                         contentDescription = null,
-                        tint = Color.White
+                        tint = ElectricCyan
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(label, color = Color.White, fontWeight = FontWeight.Bold)
@@ -389,14 +385,16 @@ fun VideoPlayerScreen(
             }
         }
 
-        // Brightness / Volume HUD indicator
+        // Glass Brightness / Volume HUD indicator
         hudLabel?.let { label ->
-            Surface(
-                shape = RoundedCornerShape(18.dp),
-                color = Color.Black.copy(alpha = 0.7f),
+            Box(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .padding(top = 80.dp)
+                    .systemBarsPadding()
+                    .padding(top = 84.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(glassPanelBrush)
+                    .border(1.dp, GlassBorderLight, RoundedCornerShape(20.dp))
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -405,7 +403,7 @@ fun VideoPlayerScreen(
                     Icon(
                         imageVector = if (hudIsBrightness) Icons.Filled.BrightnessHigh else Icons.AutoMirrored.Filled.VolumeUp,
                         contentDescription = null,
-                        tint = Color.White,
+                        tint = ElectricCyan,
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
@@ -414,107 +412,238 @@ fun VideoPlayerScreen(
             }
         }
 
-        // Controls Overlay
+        // Ambient Live Media Visualizer Overlay (persists even when controls auto-hide)
+        AnimatedVisibility(
+            visible = showVisualizer,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .systemBarsPadding()
+                .padding(
+                    start = 20.dp,
+                    end = 20.dp,
+                    bottom = if (showControls) 164.dp else 26.dp
+                )
+        ) {
+            val vizProgress = if (durationMs > 0L) {
+                (displayedPositionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
+            } else 0f
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.9f)
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(glassPanelBrush)
+                    .border(1.dp, GlassBorderLight, RoundedCornerShape(24.dp))
+                    .clickable {
+                        val entries = VisualizerStyle.entries
+                        activeVisualizerStyle = entries[(entries.indexOf(activeVisualizerStyle) + 1) % entries.size]
+                    }
+                    .padding(horizontal = 16.dp, vertical = 10.dp)
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    AnimatedAudioVisualizer(
+                        isPlaying = uiState.isPlaying,
+                        progress = vizProgress,
+                        style = activeVisualizerStyle,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(64.dp),
+                        barCount = 38
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "${activeVisualizerStyle.label} • Tap to switch",
+                        color = ElectricCyan.copy(alpha = 0.85f),
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                }
+            }
+        }
+
+        // Glassmorphism Playback Controls Overlay
         AnimatedVisibility(
             visible = showControls,
+            enter = fadeIn(),
+            exit = fadeOut(),
             modifier = Modifier.fillMaxSize()
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.35f))
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color(0x99060914),
+                                Color(0x28060914),
+                                Color(0xB3060914)
+                            )
+                        )
+                    )
                     .systemBarsPadding()
                     .padding(14.dp)
             ) {
-                // Top Bar
-                Row(
+                // Top Glass Toolbar
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .align(Alignment.TopCenter),
-                    verticalAlignment = Alignment.CenterVertically
+                        .align(Alignment.TopCenter)
+                        .shadow(12.dp, RoundedCornerShape(22.dp), ambientColor = ElectricCyan.copy(alpha = 0.16f))
+                        .clip(RoundedCornerShape(22.dp))
+                        .background(glassPanelBrush)
+                        .border(1.dp, GlassBorderLight, RoundedCornerShape(22.dp))
+                        .padding(horizontal = 6.dp, vertical = 4.dp)
                 ) {
-                    IconButton(onClick = {
-                        onSavePosition(currentVideo.id, exoPlayer.currentPosition, false)
-                        onBack()
-                    }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
-                    }
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = currentVideo.title,
-                            color = Color.White,
-                            style = MaterialTheme.typography.titleMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = "${resizeModes[resizeModeIndex].second} • ${playbackSpeed}x",
-                            color = Color.White.copy(alpha = 0.75f),
-                            style = MaterialTheme.typography.labelSmall
-                        )
-                    }
-                    IconButton(onClick = { subtitlePicker.launch(arrayOf("*/*")) }) {
-                        Icon(Icons.Filled.Subtitles, contentDescription = "Load Subtitles", tint = Color.White)
-                    }
-                    IconButton(onClick = { enterPiP() }) {
-                        Icon(Icons.Filled.PictureInPictureAlt, contentDescription = "Picture in Picture", tint = Color.White)
-                    }
-                    IconButton(onClick = { toggleRotation() }) {
-                        Icon(Icons.Filled.ScreenRotation, contentDescription = "Rotate Screen", tint = Color.White)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(
+                            onClick = {
+                                playerViewModel.persistPosition()
+                                onBack()
+                            },
+                            modifier = Modifier.testTag("video_back_button")
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = currentVideo.title,
+                                color = Color.White,
+                                style = MaterialTheme.typography.titleMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = "${currentVideo.qualityLabel} • $resizeLabel • ${uiState.playbackSpeed}x",
+                                color = ElectricCyan.copy(alpha = 0.88f),
+                                style = MaterialTheme.typography.labelSmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        IconButton(
+                            onClick = { showVisualizer = !showVisualizer },
+                            modifier = Modifier.testTag("video_visualizer_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.GraphicEq,
+                                contentDescription = "Toggle Video Visualizer",
+                                tint = if (showVisualizer) ElectricCyan else Color.White
+                            )
+                        }
+                        IconButton(onClick = { subtitlePicker.launch(arrayOf("*/*")) }) {
+                            Icon(Icons.Filled.Subtitles, contentDescription = "Load Subtitles", tint = Color.White)
+                        }
+                        IconButton(onClick = { enterPiP() }) {
+                            Icon(Icons.Filled.PictureInPictureAlt, contentDescription = "Picture in Picture", tint = Color.White)
+                        }
+                        IconButton(onClick = { toggleRotation() }) {
+                            Icon(Icons.Filled.ScreenRotation, contentDescription = "Rotate Screen", tint = Color.White)
+                        }
                     }
                 }
 
-                // Center Play/Pause + Prev/Next
-                Row(
-                    modifier = Modifier.align(Alignment.Center),
-                    horizontalArrangement = Arrangement.spacedBy(28.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                // Center Glass Transport Pod
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .shadow(16.dp, RoundedCornerShape(38.dp), ambientColor = AuroraViolet.copy(alpha = 0.25f))
+                        .clip(RoundedCornerShape(38.dp))
+                        .background(glassPanelBrush)
+                        .border(1.dp, GlassBorderLight, RoundedCornerShape(38.dp))
+                        .padding(horizontal = 18.dp, vertical = 10.dp)
                 ) {
-                    IconButton(
-                        onClick = {
-                            if (currentIndex > 0) currentIndex--
-                        },
-                        enabled = currentIndex > 0
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(18.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Filled.SkipPrevious, contentDescription = "Previous Video", tint = Color.White, modifier = Modifier.size(36.dp))
-                    }
-                    IconButton(
-                        onClick = { if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play() },
-                        modifier = Modifier
-                            .size(66.dp)
-                            .clip(CircleShape)
-                            .background(Color.White.copy(alpha = 0.22f))
-                    ) {
-                        Icon(
-                            imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                            contentDescription = "Play or Pause",
-                            tint = Color.White,
-                            modifier = Modifier.size(38.dp)
-                        )
-                    }
-                    IconButton(
-                        onClick = {
-                            if (currentIndex < videos.lastIndex) currentIndex++
-                        },
-                        enabled = currentIndex < videos.lastIndex
-                    ) {
-                        Icon(Icons.Filled.SkipNext, contentDescription = "Next Video", tint = Color.White, modifier = Modifier.size(36.dp))
+                        IconButton(
+                            onClick = { playerViewModel.skipPrevious() },
+                            enabled = uiState.currentIndex > 0,
+                            modifier = Modifier.testTag("video_prev_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.SkipPrevious,
+                                contentDescription = "Previous Video",
+                                tint = if (uiState.currentIndex > 0) Color.White else Color.White.copy(alpha = 0.35f),
+                                modifier = Modifier.size(32.dp)
+                            )
+                        }
+
+                        IconButton(
+                            onClick = { playerViewModel.seekBy(-10_000L) },
+                            modifier = Modifier.testTag("video_rewind_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.FastRewind,
+                                contentDescription = "Rewind 10 seconds",
+                                tint = Color.White,
+                                modifier = Modifier.size(28.dp)
+                            )
+                        }
+
+                        IconButton(
+                            onClick = { playerViewModel.togglePlayPause() },
+                            modifier = Modifier
+                                .size(66.dp)
+                                .shadow(12.dp, CircleShape, ambientColor = ElectricCyan.copy(alpha = 0.45f))
+                                .clip(CircleShape)
+                                .background(Brush.linearGradient(listOf(ElectricCyan, AuroraViolet)))
+                                .border(1.5.dp, Color.White.copy(alpha = 0.55f), CircleShape)
+                                .testTag("video_play_pause_button")
+                        ) {
+                            Icon(
+                                imageVector = if (uiState.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                contentDescription = "Play or Pause",
+                                tint = Color.White,
+                                modifier = Modifier.size(36.dp)
+                            )
+                        }
+
+                        IconButton(
+                            onClick = { playerViewModel.seekBy(10_000L) },
+                            modifier = Modifier.testTag("video_forward_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.FastForward,
+                                contentDescription = "Forward 10 seconds",
+                                tint = Color.White,
+                                modifier = Modifier.size(28.dp)
+                            )
+                        }
+
+                        IconButton(
+                            onClick = { playerViewModel.skipNext() },
+                            enabled = uiState.currentIndex < uiState.playlist.lastIndex,
+                            modifier = Modifier.testTag("video_next_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.SkipNext,
+                                contentDescription = "Next Video",
+                                tint = if (uiState.currentIndex < uiState.playlist.lastIndex) Color.White else Color.White.copy(alpha = 0.35f),
+                                modifier = Modifier.size(32.dp)
+                            )
+                        }
                     }
                 }
 
-                // Bottom Bar + Scrub Thumbnail Preview
+                // Bottom Glass Seekbar & Utility Dock
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .align(Alignment.BottomCenter)
                 ) {
                     if (isScrubbing && previewBitmap != null) {
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = Color.Black.copy(alpha = 0.85f),
+                        Box(
                             modifier = Modifier
                                 .align(Alignment.CenterHorizontally)
-                                .padding(bottom = 8.dp)
+                                .padding(bottom = 10.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(glassPanelBrush)
+                                .border(1.dp, GlassBorderLight, RoundedCornerShape(14.dp))
                         ) {
                             Column(
                                 modifier = Modifier.padding(6.dp),
@@ -525,65 +654,94 @@ fun VideoPlayerScreen(
                                     contentDescription = "Seek Preview",
                                     contentScale = ContentScale.Crop,
                                     modifier = Modifier
-                                        .width(136.dp)
-                                        .height(76.dp)
-                                        .clip(RoundedCornerShape(8.dp))
+                                        .width(140.dp)
+                                        .height(78.dp)
+                                        .clip(RoundedCornerShape(10.dp))
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
                                     text = FormatUtils.formatDuration(scrubTargetMs),
-                                    color = Color.White,
-                                    style = MaterialTheme.typography.labelSmall
+                                    color = ElectricCyan,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold
                                 )
                             }
                         }
                     }
 
-                    val progress = if (durationMs > 0L) (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f) else 0f
-                    Slider(
-                        value = progress,
-                        onValueChange = { frac ->
-                            isScrubbing = true
-                            val target = (frac * durationMs).toLong()
-                            scrubTargetMs = target
-                            positionMs = target
-                        },
-                        onValueChangeFinished = {
-                            exoPlayer.seekTo(scrubTargetMs)
-                            isScrubbing = false
-                        }
-                    )
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .shadow(14.dp, RoundedCornerShape(24.dp), ambientColor = ElectricCyan.copy(alpha = 0.16f))
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(glassPanelBrush)
+                            .border(1.dp, GlassBorderLight, RoundedCornerShape(24.dp))
+                            .padding(horizontal = 14.dp, vertical = 10.dp)
                     ) {
-                        Text(
-                            text = "${FormatUtils.formatDuration(positionMs)} / ${FormatUtils.formatDuration(durationMs)}",
-                            color = Color.White,
-                            style = MaterialTheme.typography.labelMedium
-                        )
-                        Row {
-                            val speeds = listOf(0.5f, 1.0f, 1.25f, 1.5f, 2.0f)
-                            IconButton(onClick = {
-                                val next = speeds[(speeds.indexOfFirst { it == playbackSpeed } + 1) % speeds.size]
-                                playbackSpeed = next
-                                exoPlayer.setPlaybackSpeed(next)
-                            }) {
-                                Icon(Icons.Filled.Speed, contentDescription = "Playback Speed", tint = Color.White)
-                            }
-                            IconButton(onClick = {
-                                resizeModeIndex = (resizeModeIndex + 1) % resizeModes.size
-                            }) {
-                                Icon(Icons.Filled.AspectRatio, contentDescription = "Aspect Ratio", tint = Color.White)
-                            }
-                            IconButton(onClick = { toggleFullscreen() }) {
-                                Icon(
-                                    imageVector = if (isFullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
-                                    contentDescription = "Fullscreen",
-                                    tint = Color.White
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            val progress = if (durationMs > 0L) {
+                                (displayedPositionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
+                            } else 0f
+
+                            Slider(
+                                value = progress,
+                                onValueChange = { frac ->
+                                    isScrubbing = true
+                                    scrubTargetMs = (frac * durationMs).toLong()
+                                },
+                                onValueChangeFinished = {
+                                    playerViewModel.seekTo(scrubTargetMs)
+                                    isScrubbing = false
+                                },
+                                colors = SliderDefaults.colors(
+                                    thumbColor = ElectricCyan,
+                                    activeTrackColor = ElectricCyan,
+                                    inactiveTrackColor = Color.White.copy(alpha = 0.24f)
                                 )
+                            )
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "${FormatUtils.formatDuration(displayedPositionMs)} / ${FormatUtils.formatDuration(durationMs)}",
+                                    color = Color.White,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Medium
+                                )
+
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    IconButton(onClick = { playerViewModel.toggleMute() }) {
+                                        Icon(
+                                            imageVector = if (uiState.isMuted) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
+                                            contentDescription = if (uiState.isMuted) "Unmute" else "Mute",
+                                            tint = if (uiState.isMuted) CoralAlert else Color.White
+                                        )
+                                    }
+                                    IconButton(onClick = { playerViewModel.cycleSpeed() }) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(Icons.Filled.Speed, contentDescription = "Playback Speed", tint = ElectricCyan, modifier = Modifier.size(18.dp))
+                                            Spacer(modifier = Modifier.width(2.dp))
+                                            Text(
+                                                text = "${uiState.playbackSpeed}x",
+                                                color = Color.White,
+                                                style = MaterialTheme.typography.labelSmall
+                                            )
+                                        }
+                                    }
+                                    IconButton(onClick = { playerViewModel.cycleResizeMode() }) {
+                                        Icon(Icons.Filled.AspectRatio, contentDescription = "Aspect Ratio", tint = Color.White)
+                                    }
+                                    IconButton(onClick = { toggleFullscreen() }) {
+                                        Icon(
+                                            imageVector = if (isFullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
+                                            contentDescription = "Fullscreen",
+                                            tint = Color.White
+                                        )
+                                    }
+                                }
                             }
                         }
                     }

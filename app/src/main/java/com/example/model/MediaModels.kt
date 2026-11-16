@@ -1,7 +1,5 @@
 package com.example.model
 
-import androidx.compose.ui.graphics.Color
-import com.example.ui.theme.*
 import kotlinx.serialization.Serializable
 
 enum class AppThemeMode(val label: String) {
@@ -10,32 +8,18 @@ enum class AppThemeMode(val label: String) {
     SYSTEM("Follow System")
 }
 
-enum class MediaPlatform(
-    val displayName: String,
-    val folderName: String,
-    val accentColor: Color,
-    val endpointHint: String
-) {
-    YOUTUBE("YouTube", "Videos", YouTubeRed, "ytdown"),
-    YOUTUBE_PLAYLIST("YouTube Playlist", "Videos", YouTubeRed, "ytsearch/playlist"),
-    TIKTOK("TikTok", "TikTok", TikTokTeal, "tikdown"),
-    INSTAGRAM("Instagram", "Instagram", InstagramPink, "instagram"),
-    FACEBOOK("Facebook", "Facebook", FacebookBlue, "fbdown2"),
-    TWITTER("Twitter / X", "Twitter", TwitterSky, "twitterdown"),
-    THREADS("Threads", "Threads", ThreadsWhite, "threads"),
-    SPOTIFY("Spotify", "Spotify", SpotifyGreen, "spotifyDl"),
-    SOUNDCLOUD("SoundCloud", "Music", SoundCloudOrange, "soundcloud"),
-    PINTEREST("Pinterest", "Pinterest", PinterestRed, "pintarest"),
-    LIKEE("Likee", "Videos", LikeeCoral, "likee"),
-    TERABOX("Terabox", "Downloads", TeraboxAzure, "teraboxv2"),
-    GOOGLE_DRIVE("Google Drive", "Downloads", DriveEmerald, "GDLink"),
-    WHATSAPP_STATUS("WhatsApp Status", "Favorites", EmeraldMint, "local"),
-    UNIVERSAL("Universal", "Downloads", ElectricCyan, "alldown-v2");
+enum class AppThemePalette(val label: String) {
+    OBSIDIAN_CYAN("Obsidian Cyan"),
+    AURORA_VIOLET("Aurora Violet"),
+    EMERALD_NEON("Emerald Neon"),
+    MIDNIGHT_ROSE("Midnight Rose"),
+    SOLAR_AMBER("Solar Amber")
+}
 
-    companion object {
-        fun fromString(value: String): MediaPlatform =
-            entries.firstOrNull { it.name.equals(value, ignoreCase = true) } ?: UNIVERSAL
-    }
+enum class VisualizerStyle(val label: String) {
+    SPECTRUM_BARS("Spectrum Bars"),
+    ORBITAL_RING("Orbital Pulse"),
+    DUAL_WAVE("Liquid Wave")
 }
 
 enum class MediaType(val label: String) {
@@ -71,20 +55,17 @@ enum class SortOption(val label: String) {
 
 enum class LibraryFilter(val label: String) {
     ALL("All Media"),
+    IMAGES("Photos"),
     VIDEOS("Videos"),
-    MUSIC("Music"),
-    IMAGES("Images"),
+    MUSIC("Songs"),
     FAVORITES("Favorites"),
     RECENT("Recent"),
     PLAYLISTS("Playlists")
 }
 
-enum class SearchPlatformScope(val label: String) {
-    ALL_LOCAL("SaveBox Library"),
+enum class SearchScope(val label: String) {
     YOUTUBE("YouTube"),
-    YOUTUBE_PLAYLIST("YT Playlists"),
-    SPOTIFY("Spotify"),
-    SOUNDCLOUD("SoundCloud")
+    SAVED_VAULT("Saved Library")
 }
 
 data class MediaFormatOption(
@@ -95,12 +76,14 @@ data class MediaFormatOption(
     val downloadUrl: String,
     val extension: String,
     val estimatedSizeBytes: Long? = null,
-    val sizeDisplay: String? = null
+    val sizeDisplay: String? = null,
+    val resolution: String? = null
 )
 
 data class AnalyzedMedia(
     val sourceUrl: String,
-    val platform: MediaPlatform,
+    val sourceHost: String,
+    val mediaType: MediaType,
     val title: String,
     val author: String?,
     val thumbnailUrl: String?,
@@ -113,14 +96,14 @@ data class AnalyzedMedia(
 data class SearchResultItem(
     val id: String,
     val title: String,
-    val subtitle: String?,
+    val channel: String?,
+    val viewCountText: String?,
     val thumbnailUrl: String?,
     val durationText: String?,
-    val url: String,
-    val platform: MediaPlatform
+    val url: String
 )
 
-data class WhatsAppStatusItem(
+data class LocalFolderMediaItem(
     val uriString: String,
     val name: String,
     val mimeType: String,
@@ -150,7 +133,7 @@ data class BackupDownloadRecord(
     val title: String,
     val sourceUrl: String,
     val downloadUrl: String,
-    val platform: String,
+    val sourceHost: String,
     val mediaType: String,
     val qualityLabel: String,
     val author: String?,

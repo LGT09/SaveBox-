@@ -1,6 +1,7 @@
 package com.example.ui.navigation
 
 import android.Manifest
+import android.app.Activity
 import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -23,19 +24,18 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.outlined.Smartphone
 import androidx.compose.material.icons.outlined.VideoLibrary
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -46,7 +46,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -56,7 +55,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -68,16 +66,17 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
-import coil.compose.AsyncImage
 import com.example.data.local.DownloadEntity
 import com.example.model.MediaType
-import com.example.model.SearchPlatformScope
 import com.example.ui.components.AnimatedAuroraBackdrop
 import com.example.ui.screens.AudioPlayerScreen
 import com.example.ui.screens.BrowserScreen
 import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.LibraryScreen
 import com.example.ui.screens.MiniAudioPlayerBar
+import com.example.ui.screens.PhotoViewerScreen
+import com.example.ui.screens.PrivacyPolicyGateScreen
+import com.example.ui.screens.PrivacyPolicyScreen
 import com.example.ui.screens.QueueScreen
 import com.example.ui.screens.SearchScreen
 import com.example.ui.screens.SettingsScreen
@@ -86,7 +85,6 @@ import com.example.ui.screens.StatusSaverScreen
 import com.example.ui.screens.VideoPlayerScreen
 import com.example.ui.viewmodel.MainViewModel
 import kotlinx.serialization.Serializable
-import java.io.File
 
 @Serializable
 sealed interface SaveBoxRoute {
@@ -96,9 +94,11 @@ sealed interface SaveBoxRoute {
     @Serializable data object Search : SaveBoxRoute
     @Serializable data object StatusSaver : SaveBoxRoute
     @Serializable data object Settings : SaveBoxRoute
+    @Serializable data object PrivacyPolicy : SaveBoxRoute
     @Serializable data object Queue : SaveBoxRoute
     @Serializable data object AudioPlayer : SaveBoxRoute
     @Serializable data class VideoPlayer(val downloadId: Long) : SaveBoxRoute
+    @Serializable data class PhotoViewer(val downloadId: Long) : SaveBoxRoute
 }
 
 private data class NavTab(
@@ -122,25 +122,43 @@ fun SaveBoxRootShell(
     sharedUrlFromIntent: String?,
     onConsumedSharedUrl: () -> Unit
 ) {
+    val context = LocalContext.current
+    val settings by viewModel.settings.collectAsStateWithLifecycle()
     var showSplash by remember { mutableStateOf(true) }
 
-    LaunchedEffect(sharedUrlFromIntent) {
-        if (!sharedUrlFromIntent.isNullOrBlank()) {
+    LaunchedEffect(sharedUrlFromIntent, settings.isLoaded, settings.hasAcceptedPrivacyPolicy) {
+        if (!sharedUrlFromIntent.isNullOrBlank() && settings.isLoaded) {
             showSplash = false
-            viewModel.pasteAndAnalyze(sharedUrlFromIntent)
-            onConsumedSharedUrl()
+            if (settings.hasAcceptedPrivacyPolicy) {
+                viewModel.pasteAndFetch(sharedUrlFromIntent)
+                onConsumedSharedUrl()
+            } else {
+                viewModel.updateUrlInput(sharedUrlFromIntent)
+                onConsumedSharedUrl()
+            }
         }
     }
 
+    val gateState = when {
+        showSplash -> 0
+        !settings.isLoaded -> 1
+        !settings.hasAcceptedPrivacyPolicy -> 2
+        else -> 3
+    }
+
     AnimatedContent(
-        targetState = showSplash,
+        targetState = gateState,
         transitionSpec = { fadeIn() togetherWith fadeOut() },
-        label = "splash_transition"
-    ) { isSplash ->
-        if (isSplash) {
-            SplashScreen(onSplashFinished = { showSplash = false })
-        } else {
-            SaveBoxMainApp(viewModel = viewModel)
+        label = "root_gate_transition"
+    ) { state ->
+        when (state) {
+            0 -> SplashScreen(onSplashFinished = { showSplash = false })
+            1 -> AnimatedAuroraBackdrop { Box(modifier = Modifier.fillMaxSize()) }
+            2 -> PrivacyPolicyGateScreen(
+                onAccept = { viewModel.acceptPrivacyPolicy() },
+                onDecline = { (context as? Activity)?.finish() }
+            )
+            else -> SaveBoxMainApp(viewModel = viewModel)
         }
     }
 }
@@ -154,10 +172,9 @@ private fun SaveBoxMainApp(viewModel: MainViewModel) {
 
     val snackbarMessage by viewModel.snackbarMessage.collectAsStateWithLifecycle()
     val completedDownloads by viewModel.completedDownloads.collectAsStateWithLifecycle()
+    val transientPlayTarget by viewModel.transientPlayTarget.collectAsStateWithLifecycle()
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val audioState by viewModel.audioPlayerState.collectAsStateWithLifecycle()
-
-    var imagePreviewTarget by remember { mutableStateOf<DownloadEntity?>(null) }
 
     val notificationPermLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -183,9 +200,11 @@ private fun SaveBoxMainApp(viewModel: MainViewModel) {
     }
 
     val isVideoScreen = backStackEntry?.destination?.hasRoute<SaveBoxRoute.VideoPlayer>() == true
+    val isPhotoScreen = backStackEntry?.destination?.hasRoute<SaveBoxRoute.PhotoViewer>() == true
     val isAudioFullScreen = backStackEntry?.destination?.hasRoute<SaveBoxRoute.AudioPlayer>() == true
     val isQueueScreen = backStackEntry?.destination?.hasRoute<SaveBoxRoute.Queue>() == true
-    val showNavigationChrome = !isVideoScreen && !isAudioFullScreen
+    val isPrivacyScreen = backStackEntry?.destination?.hasRoute<SaveBoxRoute.PrivacyPolicy>() == true
+    val showNavigationChrome = !isVideoScreen && !isPhotoScreen && !isAudioFullScreen && !isPrivacyScreen
 
     fun playMediaEntity(item: DownloadEntity) {
         when (MediaType.fromString(item.mediaType)) {
@@ -194,10 +213,13 @@ private fun SaveBoxMainApp(viewModel: MainViewModel) {
                 navController.navigate(SaveBoxRoute.AudioPlayer)
             }
             MediaType.VIDEO -> {
+                if (item.id <= 0L) {
+                    viewModel.setTransientPlayTarget(item)
+                }
                 navController.navigate(SaveBoxRoute.VideoPlayer(item.id))
             }
             MediaType.IMAGE -> {
-                imagePreviewTarget = item
+                navController.navigate(SaveBoxRoute.PhotoViewer(item.id))
             }
         }
     }
@@ -243,24 +265,24 @@ private fun SaveBoxMainApp(viewModel: MainViewModel) {
                                 label = { Text(tab.label) }
                             )
                         }
-                        val statusSelected = backStackEntry?.destination?.hasRoute<SaveBoxRoute.StatusSaver>() == true
+                        val folderSelected = backStackEntry?.destination?.hasRoute<SaveBoxRoute.StatusSaver>() == true
                         NavigationRailItem(
-                            selected = statusSelected,
+                            selected = folderSelected,
                             onClick = { navigateToTab(SaveBoxRoute.StatusSaver) },
                             icon = {
                                 Icon(
-                                    imageVector = if (statusSelected) Icons.Filled.Smartphone else Icons.Outlined.Smartphone,
-                                    contentDescription = "Statuses"
+                                    imageVector = if (folderSelected) Icons.Filled.FolderOpen else Icons.Outlined.FolderOpen,
+                                    contentDescription = "Folders"
                                 )
                             },
-                            label = { Text("Statuses") }
+                            label = { Text("Folders") }
                         )
                     }
                 }
 
                 Scaffold(
                     containerColor = Color.Transparent,
-                    contentWindowInsets = if (isVideoScreen) WindowInsets(0, 0, 0, 0) else WindowInsets.safeDrawing,
+                    contentWindowInsets = if (isVideoScreen || isPhotoScreen) WindowInsets(0, 0, 0, 0) else WindowInsets.safeDrawing,
                     snackbarHost = { SnackbarHost(snackbarHostState) },
                     bottomBar = {
                         if (showNavigationChrome && !isQueueScreen) {
@@ -318,7 +340,7 @@ private fun SaveBoxMainApp(viewModel: MainViewModel) {
                                         navigateToTab(SaveBoxRoute.Search)
                                     },
                                     onOpenLibrary = { navigateToTab(SaveBoxRoute.Library) },
-                                    onOpenStatusSaver = { navigateToTab(SaveBoxRoute.StatusSaver) },
+                                    onOpenPrivacyPolicy = { navController.navigate(SaveBoxRoute.PrivacyPolicy) },
                                     onOpenBrowser = { navigateToTab(SaveBoxRoute.Browser) },
                                     onOpenAudioPlayer = { navController.navigate(SaveBoxRoute.AudioPlayer) },
                                     onPlayMedia = { playMediaEntity(it) }
@@ -330,7 +352,7 @@ private fun SaveBoxMainApp(viewModel: MainViewModel) {
                                     viewModel = viewModel,
                                     onAnalyzePageUrl = { url ->
                                         navigateToTab(SaveBoxRoute.Home)
-                                        viewModel.pasteAndAnalyze(url)
+                                        viewModel.pasteAndFetch(url)
                                     }
                                 )
                             }
@@ -345,9 +367,13 @@ private fun SaveBoxMainApp(viewModel: MainViewModel) {
                             composable<SaveBoxRoute.Search> {
                                 SearchScreen(
                                     viewModel = viewModel,
-                                    onAnalyzeResultUrl = { url ->
-                                        navigateToTab(SaveBoxRoute.Home)
-                                        viewModel.pasteAndAnalyze(url)
+                                    onPlayStreamAudio = { stream ->
+                                        viewModel.playAudioTrack(stream, listOf(stream))
+                                        navController.navigate(SaveBoxRoute.AudioPlayer)
+                                    },
+                                    onPlayStreamVideo = { stream ->
+                                        viewModel.setTransientPlayTarget(stream)
+                                        navController.navigate(SaveBoxRoute.VideoPlayer(stream.id))
                                     },
                                     onPlayLocal = { playMediaEntity(it) }
                                 )
@@ -361,7 +387,17 @@ private fun SaveBoxMainApp(viewModel: MainViewModel) {
                             composable<SaveBoxRoute.Settings> {
                                 SettingsScreen(
                                     viewModel = viewModel,
-                                    onOpenInAppBrowser = { url -> openInAppBrowser(url) }
+                                    onOpenInAppBrowser = { url -> openInAppBrowser(url) },
+                                    onOpenPrivacyPolicy = { navController.navigate(SaveBoxRoute.PrivacyPolicy) }
+                                )
+                            }
+
+                            composable<SaveBoxRoute.PrivacyPolicy> {
+                                BackHandler { navController.popBackStack() }
+                                PrivacyPolicyScreen(
+                                    acceptedAt = settings.privacyPolicyAcceptedAt,
+                                    policyVersion = settings.privacyPolicyVersion,
+                                    onBack = { navController.popBackStack() }
                                 )
                             }
 
@@ -387,6 +423,7 @@ private fun SaveBoxMainApp(viewModel: MainViewModel) {
                                 val videoList = completedDownloads.filter { it.mediaType == MediaType.VIDEO.name }
                                 val target = videoList.firstOrNull { it.id == route.downloadId }
                                     ?: completedDownloads.firstOrNull { it.id == route.downloadId }
+                                    ?: transientPlayTarget?.takeIf { it.id == route.downloadId }
 
                                 if (target != null) {
                                     VideoPlayerScreen(
@@ -394,9 +431,26 @@ private fun SaveBoxMainApp(viewModel: MainViewModel) {
                                         playlist = videoList.ifEmpty { listOf(target) },
                                         autoResumePosition = settings.autoResumePlayback,
                                         defaultSpeed = settings.defaultPlaybackSpeed,
-                                        onSavePosition = { id, pos, inc ->
-                                            viewModel.saveVideoPosition(id, pos, inc)
-                                        },
+                                        visualizerStyle = settings.visualizerStyle,
+                                        onBack = { navController.popBackStack() }
+                                    )
+                                } else {
+                                    LaunchedEffect(Unit) { navController.popBackStack() }
+                                }
+                            }
+
+                            composable<SaveBoxRoute.PhotoViewer> { entry ->
+                                val route = entry.toRoute<SaveBoxRoute.PhotoViewer>()
+                                val photoList = completedDownloads.filter { it.mediaType == MediaType.IMAGE.name }
+                                val target = photoList.firstOrNull { it.id == route.downloadId }
+                                    ?: completedDownloads.firstOrNull { it.id == route.downloadId }
+
+                                if (target != null) {
+                                    PhotoViewerScreen(
+                                        initialPhoto = target,
+                                        photos = photoList.ifEmpty { listOf(target) },
+                                        onToggleFavorite = { viewModel.toggleFavorite(it) },
+                                        onDelete = { viewModel.deleteDownload(it) },
                                         onBack = { navController.popBackStack() }
                                     )
                                 } else {
@@ -408,23 +462,5 @@ private fun SaveBoxMainApp(viewModel: MainViewModel) {
                 }
             }
         }
-    }
-
-    imagePreviewTarget?.let { img ->
-        AlertDialog(
-            onDismissRequest = { imagePreviewTarget = null },
-            title = { Text(img.title) },
-            text = {
-                AsyncImage(
-                    model = img.localFilePath?.let { File(it) } ?: img.localUri ?: img.thumbnailUrl,
-                    contentDescription = img.title,
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = { imagePreviewTarget = null }) { Text("Close") }
-            }
-        )
     }
 }

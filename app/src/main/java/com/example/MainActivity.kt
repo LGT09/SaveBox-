@@ -31,6 +31,7 @@ class MainActivity : ComponentActivity() {
 
             SaveBoxTheme(
                 themeMode = settings.themeMode,
+                themePalette = settings.themePalette,
                 dynamicColor = settings.dynamicColor
             ) {
                 SaveBoxRootShell(

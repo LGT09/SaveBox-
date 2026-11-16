@@ -7,26 +7,32 @@ import androidx.lifecycle.viewModelScope
 import com.example.data.download.DownloadRepository
 import com.example.data.download.StorageManager
 import com.example.data.local.DownloadEntity
+import com.example.data.local.DownloadQueue
+import com.example.data.local.MediaItem
 import com.example.data.local.MediaMetadataEntity
 import com.example.data.local.PlaylistWithTracks
 import com.example.data.local.SearchHistoryEntity
 import com.example.data.local.SettingsDataStore
 import com.example.data.local.UserSettings
 import com.example.data.remote.ApiResult
-import com.example.data.remote.MediaApiService
-import com.example.data.remote.SaveBoxApiManager
+import com.example.data.remote.BrowserPageSnapshot
+import com.example.data.remote.InAppBrowserEngine
+import com.example.data.remote.UrlMediaBot
+import com.example.data.remote.YouTubeSearchEngine
+import com.example.data.status.LocalMediaScanner
 import com.example.data.status.StatusSaverRepository
 import com.example.model.AnalyzedMedia
 import com.example.model.AppThemeMode
+import com.example.model.AppThemePalette
 import com.example.model.LibraryFilter
+import com.example.model.LocalFolderMediaItem
 import com.example.model.MediaFormatOption
-import com.example.model.MediaPlatform
 import com.example.model.MediaType
-import com.example.model.SearchPlatformScope
 import com.example.model.SearchResultItem
+import com.example.model.SearchScope
 import com.example.model.SortOption
 import com.example.model.StorageFolderBreakdown
-import com.example.model.WhatsAppStatusItem
+import com.example.model.VisualizerStyle
 import com.example.player.AudioEffectsManager
 import com.example.player.AudioPlayerState
 import com.example.player.EqualizerState
@@ -38,13 +44,14 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 sealed class AnalyzeUiState {
     data object Idle : AnalyzeUiState()
-    data class Loading(val platform: MediaPlatform) : AnalyzeUiState()
+    data class Loading(val targetUrl: String) : AnalyzeUiState()
     data class Success(val media: AnalyzedMedia) : AnalyzeUiState()
     data class Error(val message: String) : AnalyzeUiState()
 }
@@ -56,14 +63,23 @@ sealed class SearchUiState {
     data class Error(val message: String) : SearchUiState()
 }
 
+sealed class BrowserReaderUiState {
+    data object Idle : BrowserReaderUiState()
+    data class Loading(val targetUrl: String) : BrowserReaderUiState()
+    data class Loaded(val snapshot: BrowserPageSnapshot) : BrowserReaderUiState()
+    data class Error(val targetUrl: String, val message: String) : BrowserReaderUiState()
+}
+
 @HiltViewModel
 class MainViewModel @Inject constructor(
     application: Application,
-    private val apiManager: SaveBoxApiManager,
-    @Suppress("unused") val mediaApiService: MediaApiService,
+    private val urlMediaBot: UrlMediaBot,
+    private val youTubeSearchEngine: YouTubeSearchEngine,
+    private val inAppBrowserEngine: InAppBrowserEngine,
     private val downloadRepo: DownloadRepository,
     private val storageManager: StorageManager,
     private val statusRepo: StatusSaverRepository,
+    private val localMediaScanner: LocalMediaScanner,
     private val settingsStore: SettingsDataStore,
     val mediaControllerManager: MediaControllerManager
 ) : AndroidViewModel(application) {
@@ -72,6 +88,12 @@ class MainViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), UserSettings())
 
     val allDownloads: StateFlow<List<DownloadEntity>> = downloadRepo.allDownloads
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val allMediaItems: StateFlow<List<MediaItem>> = downloadRepo.allMediaItems
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val activeDownloadQueue: StateFlow<List<DownloadQueue>> = downloadRepo.activeDownloadQueue
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val mediaMetadataList: StateFlow<List<MediaMetadataEntity>> = downloadRepo.allMediaMetadata
@@ -98,12 +120,9 @@ class MainViewModel @Inject constructor(
     val audioPlayerState: StateFlow<AudioPlayerState> = mediaControllerManager.state
     val equalizerState: StateFlow<EqualizerState> = AudioEffectsManager.state
 
-    // Home URL input & analysis
+    // Home URL input & Bot fetch state
     private val _urlInput = MutableStateFlow("")
     val urlInput: StateFlow<String> = _urlInput.asStateFlow()
-
-    private val _detectedPlatform = MutableStateFlow<MediaPlatform?>(null)
-    val detectedPlatform: StateFlow<MediaPlatform?> = _detectedPlatform.asStateFlow()
 
     private val _clipboardSuggestion = MutableStateFlow<String?>(null)
     val clipboardSuggestion: StateFlow<String?> = _clipboardSuggestion.asStateFlow()
@@ -117,6 +136,18 @@ class MainViewModel @Inject constructor(
 
     private val _browserPendingUrl = MutableStateFlow<String?>(null)
     val browserPendingUrl: StateFlow<String?> = _browserPendingUrl.asStateFlow()
+
+    private val _browserReaderState = MutableStateFlow<BrowserReaderUiState>(BrowserReaderUiState.Idle)
+    val browserReaderState: StateFlow<BrowserReaderUiState> = _browserReaderState.asStateFlow()
+
+    private val browserBackStack = ArrayDeque<String>()
+    private val browserForwardStack = ArrayDeque<String>()
+
+    private val _canBrowserReaderBack = MutableStateFlow(false)
+    val canBrowserReaderBack: StateFlow<Boolean> = _canBrowserReaderBack.asStateFlow()
+
+    private val _canBrowserReaderForward = MutableStateFlow(false)
+    val canBrowserReaderForward: StateFlow<Boolean> = _canBrowserReaderForward.asStateFlow()
 
     // Library filter/sort/view state
     private val _librarySearchQuery = MutableStateFlow("")
@@ -134,6 +165,9 @@ class MainViewModel @Inject constructor(
     private val _isLibraryGridView = MutableStateFlow(true)
     val isLibraryGridView: StateFlow<Boolean> = _isLibraryGridView.asStateFlow()
 
+    private val _isScanningDeviceMedia = MutableStateFlow(false)
+    val isScanningDeviceMedia: StateFlow<Boolean> = _isScanningDeviceMedia.asStateFlow()
+
     val filteredLibraryItems: StateFlow<List<DownloadEntity>> = combine(
         completedDownloads,
         _librarySearchQuery,
@@ -146,7 +180,7 @@ class MainViewModel @Inject constructor(
                 val matchesQuery = query.isBlank() ||
                     item.title.contains(query, ignoreCase = true) ||
                     (item.author?.contains(query, ignoreCase = true) == true) ||
-                    item.platform.contains(query, ignoreCase = true)
+                    item.sourceHost.contains(query, ignoreCase = true)
                 val matchesFilter = when (filter) {
                     LibraryFilter.ALL -> true
                     LibraryFilter.VIDEOS -> item.mediaType == MediaType.VIDEO.name
@@ -169,25 +203,38 @@ class MainViewModel @Inject constructor(
             }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // Global Search state
+    // YouTube & Vault Search state
     private val _globalSearchQuery = MutableStateFlow("")
     val globalSearchQuery: StateFlow<String> = _globalSearchQuery.asStateFlow()
 
-    private val _searchScope = MutableStateFlow(SearchPlatformScope.YOUTUBE)
-    val searchScope: StateFlow<SearchPlatformScope> = _searchScope.asStateFlow()
+    private val _searchScope = MutableStateFlow(SearchScope.YOUTUBE)
+    val searchScope: StateFlow<SearchScope> = _searchScope.asStateFlow()
 
     private val _onlineSearchState = MutableStateFlow<SearchUiState>(SearchUiState.Idle)
     val onlineSearchState: StateFlow<SearchUiState> = _onlineSearchState.asStateFlow()
 
-    // WhatsApp Status Saver state
-    private val _statusItems = MutableStateFlow<List<WhatsAppStatusItem>>(emptyList())
-    val statusItems: StateFlow<List<WhatsAppStatusItem>> = _statusItems.asStateFlow()
+    private val _youtubeResolvingId = MutableStateFlow<String?>(null)
+    val youtubeResolvingId: StateFlow<String?> = _youtubeResolvingId.asStateFlow()
 
-    private val _statusSearchQuery = MutableStateFlow("")
-    val statusSearchQuery: StateFlow<String> = _statusSearchQuery.asStateFlow()
+    private val _youtubeSheetMedia = MutableStateFlow<AnalyzedMedia?>(null)
+    val youtubeSheetMedia: StateFlow<AnalyzedMedia?> = _youtubeSheetMedia.asStateFlow()
 
-    private val _isScanningStatuses = MutableStateFlow(false)
-    val isScanningStatuses: StateFlow<Boolean> = _isScanningStatuses.asStateFlow()
+    private val _transientPlayTarget = MutableStateFlow<DownloadEntity?>(null)
+    val transientPlayTarget: StateFlow<DownloadEntity?> = _transientPlayTarget.asStateFlow()
+
+    fun setTransientPlayTarget(entity: DownloadEntity?) {
+        _transientPlayTarget.value = entity
+    }
+
+    // Local Folder Media Importer state
+    private val _folderMediaItems = MutableStateFlow<List<LocalFolderMediaItem>>(emptyList())
+    val folderMediaItems: StateFlow<List<LocalFolderMediaItem>> = _folderMediaItems.asStateFlow()
+
+    private val _folderSearchQuery = MutableStateFlow("")
+    val folderSearchQuery: StateFlow<String> = _folderSearchQuery.asStateFlow()
+
+    private val _isScanningFolders = MutableStateFlow(false)
+    val isScanningFolders: StateFlow<Boolean> = _isScanningFolders.asStateFlow()
 
     // Storage & Cache metrics
     private val _storageBreakdown = MutableStateFlow<List<StorageFolderBreakdown>>(emptyList())
@@ -196,19 +243,28 @@ class MainViewModel @Inject constructor(
     private val _cacheSizeBytes = MutableStateFlow(0L)
     val cacheSizeBytes: StateFlow<Long> = _cacheSizeBytes.asStateFlow()
 
-    // Transient UI toast/snackbar message
     private val _snackbarMessage = MutableStateFlow<String?>(null)
     val snackbarMessage: StateFlow<String?> = _snackbarMessage.asStateFlow()
 
     init {
         mediaControllerManager.connect()
         refreshStorageMetrics()
+        scanDeviceMedia(silent = true)
         viewModelScope.launch {
-            settings.collect { userSettings ->
-                if (userSettings.whatsAppTreeUri != null || userSettings.whatsAppBusinessTreeUri != null) {
-                    refreshWhatsAppStatuses()
+            settings
+                .distinctUntilChangedBy { it.customFolderTreeUri to it.secondaryFolderTreeUri }
+                .collect { userSettings ->
+                    if (userSettings.customFolderTreeUri != null || userSettings.secondaryFolderTreeUri != null) {
+                        refreshFolderMedia()
+                        scanDeviceMedia(silent = true)
+                    }
                 }
-            }
+        }
+    }
+
+    fun acceptPrivacyPolicy() {
+        viewModelScope.launch {
+            settingsStore.acceptPrivacyPolicy()
         }
     }
 
@@ -219,8 +275,6 @@ class MainViewModel @Inject constructor(
     fun showMessage(msg: String) {
         _snackbarMessage.value = msg
     }
-
-    fun detectPlatformForUrl(url: String): MediaPlatform = apiManager.detectPlatform(url)
 
     fun updateBrowserCurrentUrl(url: String) {
         _browserCurrentUrl.value = url
@@ -248,16 +302,58 @@ class MainViewModel @Inject constructor(
         }
     }
 
+    fun navigateBrowserReader(rawInput: String, recordHistory: Boolean = true) {
+        val target = resolveBrowserTarget(rawInput)
+        val previous = _browserCurrentUrl.value
+        if (recordHistory && previous.isNotBlank() && !previous.equals(target, ignoreCase = true)) {
+            browserBackStack.addLast(previous)
+            if (browserBackStack.size > 30) browserBackStack.removeFirst()
+            browserForwardStack.clear()
+        }
+        _canBrowserReaderBack.value = browserBackStack.isNotEmpty()
+        _canBrowserReaderForward.value = browserForwardStack.isNotEmpty()
+        _browserCurrentUrl.value = target
+        _browserReaderState.value = BrowserReaderUiState.Loading(target)
+
+        viewModelScope.launch {
+            when (val res = inAppBrowserEngine.navigate(target)) {
+                is ApiResult.Success -> {
+                    _browserCurrentUrl.value = res.data.url
+                    _browserReaderState.value = BrowserReaderUiState.Loaded(res.data)
+                }
+                is ApiResult.Error -> {
+                    _browserReaderState.value = BrowserReaderUiState.Error(target, res.message)
+                }
+            }
+        }
+    }
+
+    fun browserReaderBack() {
+        val prev = browserBackStack.removeLastOrNull() ?: return
+        browserForwardStack.addLast(_browserCurrentUrl.value)
+        _canBrowserReaderBack.value = browserBackStack.isNotEmpty()
+        _canBrowserReaderForward.value = browserForwardStack.isNotEmpty()
+        navigateBrowserReader(prev, recordHistory = false)
+    }
+
+    fun browserReaderForward() {
+        val next = browserForwardStack.removeLastOrNull() ?: return
+        browserBackStack.addLast(_browserCurrentUrl.value)
+        _canBrowserReaderBack.value = browserBackStack.isNotEmpty()
+        _canBrowserReaderForward.value = browserForwardStack.isNotEmpty()
+        navigateBrowserReader(next, recordHistory = false)
+    }
+
+    fun reloadBrowserReader() {
+        navigateBrowserReader(_browserCurrentUrl.value, recordHistory = false)
+    }
+
     fun updateUrlInput(value: String) {
         _urlInput.value = value
-        _detectedPlatform.value = if (value.contains(".") || value.startsWith("http", true)) {
-            apiManager.detectPlatform(value)
-        } else null
     }
 
     fun clearUrlInput() {
         _urlInput.value = ""
-        _detectedPlatform.value = null
         _analyzeState.value = AnalyzeUiState.Idle
     }
 
@@ -265,24 +361,22 @@ class MainViewModel @Inject constructor(
         _clipboardSuggestion.value = url
     }
 
-    fun pasteAndAnalyze(url: String) {
+    fun pasteAndFetch(url: String) {
         updateUrlInput(url)
-        analyzeCurrentUrl()
+        fetchMediaFromCurrentUrl()
     }
 
-    fun analyzeCurrentUrl() {
+    fun fetchMediaFromCurrentUrl() {
         val raw = _urlInput.value.trim()
         if (raw.isEmpty()) {
-            _analyzeState.value = AnalyzeUiState.Error("Paste or type a media link first.")
+            _analyzeState.value = AnalyzeUiState.Error("Paste or enter a link first.")
             return
         }
-        val platform = apiManager.detectPlatform(raw)
-        _detectedPlatform.value = platform
-        _analyzeState.value = AnalyzeUiState.Loading(platform)
+        _analyzeState.value = AnalyzeUiState.Loading(raw)
 
         viewModelScope.launch {
-            downloadRepo.recordSearch(raw, SearchPlatformScope.ALL_LOCAL, isUrl = true)
-            when (val result = apiManager.analyzeUrl(raw)) {
+            downloadRepo.recordSearch(raw, SearchScope.SAVED_VAULT, isUrl = true)
+            when (val result = urlMediaBot.fetchMediaFromUrl(raw)) {
                 is ApiResult.Success -> {
                     downloadRepo.saveAnalyzedMetadata(result.data)
                     _analyzeState.value = AnalyzeUiState.Success(result.data)
@@ -294,7 +388,7 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    fun dismissAnalysisSheet() {
+    fun dismissFetchedMedia() {
         _analyzeState.value = AnalyzeUiState.Idle
     }
 
@@ -302,14 +396,123 @@ class MainViewModel @Inject constructor(
         analyzed: AnalyzedMedia,
         format: MediaFormatOption,
         customTitle: String,
-        customFolder: String?
+        customFolder: String?,
+        alsoSaveCoverArt: Boolean = (format.mediaType == MediaType.AUDIO && !analyzed.thumbnailUrl.isNullOrBlank())
     ) {
         viewModelScope.launch {
-            downloadRepo.enqueueDownload(analyzed, format, customTitle, customFolder)
+            downloadRepo.enqueueDownload(
+                analyzed = analyzed,
+                format = format,
+                customTitle = customTitle,
+                customFolder = customFolder,
+                alsoSaveCoverArt = alsoSaveCoverArt
+            )
             _analyzeState.value = AnalyzeUiState.Idle
-            _snackbarMessage.value = "Added \"${customTitle.ifBlank { analyzed.title }}\" to Download Queue"
+            _youtubeSheetMedia.value = null
+            _snackbarMessage.value = "Queued \"${customTitle.ifBlank { analyzed.title }}\" (${format.label})"
             refreshStorageMetrics()
         }
+    }
+
+    // YouTube Search inline Play, Download Song + Cover Art, & Quality Sheet
+    fun playYouTubeSearchResult(
+        item: SearchResultItem,
+        onStreamAudioReady: (DownloadEntity) -> Unit,
+        onStreamVideoReady: (DownloadEntity) -> Unit
+    ) {
+        viewModelScope.launch {
+            _youtubeResolvingId.value = item.id
+            when (val res = urlMediaBot.fetchMediaFromUrl(item.url)) {
+                is ApiResult.Success -> {
+                    val analyzed = res.data
+                    val videoFmt = analyzed.formats.firstOrNull { it.mediaType == MediaType.VIDEO }
+                    val audioFmt = analyzed.formats.firstOrNull { it.mediaType == MediaType.AUDIO }
+                    val chosen = videoFmt ?: audioFmt
+                    if (chosen == null) {
+                        _snackbarMessage.value = "No playable stream found for \"${item.title}\""
+                    } else {
+                        val transient = DownloadEntity(
+                            id = -item.id.hashCode().toLong().let { if (it == 0L) 1L else kotlin.math.abs(it) },
+                            title = analyzed.title.ifBlank { item.title },
+                            fileName = "${UrlMediaBot.sanitizeFileName(item.title)}.${chosen.extension}",
+                            sourceUrl = item.url,
+                            downloadUrl = chosen.downloadUrl,
+                            sourceHost = "YouTube Stream",
+                            mediaType = chosen.mediaType.name,
+                            qualityLabel = chosen.label,
+                            author = analyzed.author ?: item.channel,
+                            thumbnailUrl = analyzed.thumbnailUrl ?: item.thumbnailUrl,
+                            durationMs = analyzed.durationMs,
+                            localUri = chosen.downloadUrl,
+                            status = "COMPLETED"
+                        )
+                        if (chosen.mediaType == MediaType.AUDIO) {
+                            onStreamAudioReady(transient)
+                        } else {
+                            onStreamVideoReady(transient)
+                        }
+                    }
+                }
+                is ApiResult.Error -> {
+                    _snackbarMessage.value = res.message
+                }
+            }
+            _youtubeResolvingId.value = null
+        }
+    }
+
+    fun downloadYouTubeSearchResult(item: SearchResultItem, preferAudioWithCover: Boolean) {
+        viewModelScope.launch {
+            _youtubeResolvingId.value = item.id
+            when (val res = urlMediaBot.fetchMediaFromUrl(item.url)) {
+                is ApiResult.Success -> {
+                    val analyzed = res.data
+                    val chosen = if (preferAudioWithCover) {
+                        analyzed.formats.firstOrNull { it.mediaType == MediaType.AUDIO }
+                            ?: analyzed.formats.firstOrNull { it.mediaType == MediaType.VIDEO }
+                    } else {
+                        analyzed.formats.firstOrNull { it.mediaType == MediaType.VIDEO }
+                            ?: analyzed.formats.firstOrNull { it.mediaType == MediaType.AUDIO }
+                    }
+                    if (chosen == null) {
+                        _snackbarMessage.value = "Could not extract audio/video stream from YouTube"
+                    } else {
+                        downloadRepo.enqueueDownload(
+                            analyzed = analyzed,
+                            format = chosen,
+                            customTitle = item.title,
+                            customFolder = null,
+                            alsoSaveCoverArt = true
+                        )
+                        _snackbarMessage.value = "Downloading \"${item.title}\" + Cover Art (${chosen.label})"
+                        refreshStorageMetrics()
+                    }
+                }
+                is ApiResult.Error -> {
+                    _snackbarMessage.value = res.message
+                }
+            }
+            _youtubeResolvingId.value = null
+        }
+    }
+
+    fun openYouTubeQualityPicker(item: SearchResultItem) {
+        viewModelScope.launch {
+            _youtubeResolvingId.value = item.id
+            when (val res = urlMediaBot.fetchMediaFromUrl(item.url)) {
+                is ApiResult.Success -> {
+                    _youtubeSheetMedia.value = res.data
+                }
+                is ApiResult.Error -> {
+                    _snackbarMessage.value = res.message
+                }
+            }
+            _youtubeResolvingId.value = null
+        }
+    }
+
+    fun dismissYouTubeSheetMedia() {
+        _youtubeSheetMedia.value = null
     }
 
     fun pauseDownload(item: DownloadEntity) {
@@ -336,6 +539,40 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch {
             downloadRepo.renameDownload(item, newTitle)
             _snackbarMessage.value = "Renamed to \"$newTitle\""
+        }
+    }
+
+    // Device Media Scanning & Pickers (Play Policy Compliant)
+    fun scanDeviceMedia(silent: Boolean = false) {
+        viewModelScope.launch {
+            _isScanningDeviceMedia.value = true
+            val currentSettings = settings.value
+            val found = localMediaScanner.scanAllAccessibleMedia(
+                primaryTreeUri = currentSettings.customFolderTreeUri,
+                secondaryTreeUri = currentSettings.secondaryFolderTreeUri
+            )
+            refreshStorageMetrics()
+            _isScanningDeviceMedia.value = false
+            if (!silent) {
+                _snackbarMessage.value = if (found > 0) {
+                    "Scanned & indexed $found media files with cover art"
+                } else {
+                    "Scan complete — library is up to date"
+                }
+            }
+        }
+    }
+
+    fun importPickedMedia(uris: List<Uri>, mediaTypeHint: MediaType? = null) {
+        if (uris.isEmpty()) return
+        viewModelScope.launch {
+            val saved = localMediaScanner.importPickedMediaUris(uris, mediaTypeHint)
+            refreshStorageMetrics()
+            _snackbarMessage.value = if (saved.isNotEmpty()) {
+                "Added ${saved.size} item(s) to SaveBox Library"
+            } else {
+                "Unable to import selected files"
+            }
         }
     }
 
@@ -370,11 +607,12 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch { downloadRepo.deletePlaylist(playlistId) }
     }
 
-    // Global Search
+    // YouTube & Vault Search
     fun setGlobalSearchQuery(query: String) { _globalSearchQuery.value = query }
-    fun setSearchScope(scope: SearchPlatformScope) {
+
+    fun setSearchScope(scope: SearchScope) {
         _searchScope.value = scope
-        if (_globalSearchQuery.value.isNotBlank() && scope != SearchPlatformScope.ALL_LOCAL) {
+        if (_globalSearchQuery.value.isNotBlank() && scope == SearchScope.YOUTUBE) {
             performOnlineSearch()
         }
     }
@@ -386,12 +624,12 @@ class MainViewModel @Inject constructor(
 
         viewModelScope.launch {
             downloadRepo.recordSearch(query, scope, isUrl = false)
-            if (scope == SearchPlatformScope.ALL_LOCAL) {
+            if (scope == SearchScope.SAVED_VAULT) {
                 _onlineSearchState.value = SearchUiState.Idle
                 return@launch
             }
             _onlineSearchState.value = SearchUiState.Loading
-            when (val result = apiManager.searchMedia(query, scope)) {
+            when (val result = youTubeSearchEngine.search(query)) {
                 is ApiResult.Success -> _onlineSearchState.value = SearchUiState.Results(result.data)
                 is ApiResult.Error -> _onlineSearchState.value = SearchUiState.Error(result.message)
             }
@@ -441,58 +679,66 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    // WhatsApp Status Saver
-    fun onWhatsAppFolderGranted(uri: Uri, isBusiness: Boolean) {
+    // Local Folder Media Importer
+    fun onFolderGranted(uri: Uri, isSecondary: Boolean) {
         viewModelScope.launch {
-            if (isBusiness) {
-                settingsStore.setWhatsAppBusinessTreeUri(uri.toString())
+            if (isSecondary) {
+                settingsStore.setSecondaryFolderTreeUri(uri.toString())
             } else {
-                settingsStore.setWhatsAppTreeUri(uri.toString())
+                settingsStore.setCustomFolderTreeUri(uri.toString())
             }
-            refreshWhatsAppStatuses()
+            refreshFolderMedia()
+            scanDeviceMedia(silent = false)
         }
     }
 
-    fun refreshWhatsAppStatuses() {
+    fun refreshFolderMedia() {
         viewModelScope.launch {
-            _isScanningStatuses.value = true
+            _isScanningFolders.value = true
             val currentSettings = settings.value
-            val items = statusRepo.scanStatuses(
-                currentSettings.whatsAppTreeUri,
-                currentSettings.whatsAppBusinessTreeUri
+            val items = statusRepo.scanFolderMedia(
+                currentSettings.customFolderTreeUri,
+                currentSettings.secondaryFolderTreeUri
             )
-            _statusItems.value = items
-            _isScanningStatuses.value = false
+            _folderMediaItems.value = items
+            _isScanningFolders.value = false
         }
     }
 
-    fun setStatusSearchQuery(q: String) { _statusSearchQuery.value = q }
+    fun setFolderSearchQuery(q: String) { _folderSearchQuery.value = q }
 
-    fun saveWhatsAppStatus(item: WhatsAppStatusItem) {
+    fun importFolderMedia(item: LocalFolderMediaItem) {
         viewModelScope.launch {
-            val saved = statusRepo.saveStatusToGallery(item)
+            val saved = statusRepo.importMediaToVault(item)
             if (saved != null) {
-                _snackbarMessage.value = "Status saved to SaveBox Gallery"
-                refreshWhatsAppStatuses()
+                _snackbarMessage.value = "Imported to SaveBox Library"
+                refreshFolderMedia()
                 refreshStorageMetrics()
             } else {
-                _snackbarMessage.value = "Unable to copy status file"
+                _snackbarMessage.value = "Unable to copy media file"
             }
         }
     }
 
-    fun deleteSavedStatusCopy(item: WhatsAppStatusItem) {
+    fun deleteImportedFolderCopy(item: LocalFolderMediaItem) {
         viewModelScope.launch {
-            if (statusRepo.deleteSavedCopy(item)) {
-                _snackbarMessage.value = "Deleted saved status copy"
-                refreshWhatsAppStatuses()
+            if (statusRepo.deleteImportedCopy(item)) {
+                _snackbarMessage.value = "Deleted imported copy"
+                refreshFolderMedia()
                 refreshStorageMetrics()
             }
         }
     }
 
-    // Settings, Storage & Backup
+    // Settings, Themes, Visualizers, Storage & Backup
     fun setThemeMode(mode: AppThemeMode) { viewModelScope.launch { settingsStore.setThemeMode(mode) } }
+    fun setThemePalette(palette: AppThemePalette) { viewModelScope.launch { settingsStore.setThemePalette(palette) } }
+    fun setVisualizerStyle(style: VisualizerStyle) { viewModelScope.launch { settingsStore.setVisualizerStyle(style) } }
+    fun cycleVisualizerStyle() {
+        val all = VisualizerStyle.entries
+        val next = all[(all.indexOf(settings.value.visualizerStyle) + 1) % all.size]
+        setVisualizerStyle(next)
+    }
     fun setDynamicColor(enabled: Boolean) { viewModelScope.launch { settingsStore.setDynamicColor(enabled) } }
     fun setDefaultQuality(q: String) { viewModelScope.launch { settingsStore.setDefaultQuality(q) } }
     fun setSimultaneousDownloads(n: Int) { viewModelScope.launch { settingsStore.setSimultaneousDownloads(n) } }

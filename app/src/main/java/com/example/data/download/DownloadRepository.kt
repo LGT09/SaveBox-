@@ -10,6 +10,10 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import com.example.data.local.DownloadDao
 import com.example.data.local.DownloadEntity
+import com.example.data.local.DownloadQueue
+import com.example.data.local.DownloadQueueDao
+import com.example.data.local.MediaItem
+import com.example.data.local.MediaItemDao
 import com.example.data.local.MediaMetadataDao
 import com.example.data.local.MediaMetadataEntity
 import com.example.data.local.PlaylistDao
@@ -18,13 +22,13 @@ import com.example.data.local.PlaylistTrackCrossRef
 import com.example.data.local.PlaylistWithTracks
 import com.example.data.local.SearchHistoryDao
 import com.example.data.local.SearchHistoryEntity
-import com.example.data.remote.MediaResponseParser
+import com.example.data.remote.UrlMediaBot
 import com.example.model.AnalyzedMedia
 import com.example.model.BackupDownloadRecord
 import com.example.model.BackupPayload
 import com.example.model.BackupPlaylistRecord
 import com.example.model.MediaFormatOption
-import com.example.model.SearchPlatformScope
+import com.example.model.SearchScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
@@ -36,6 +40,8 @@ import java.util.UUID
 class DownloadRepository(
     private val context: Context,
     private val downloadDao: DownloadDao,
+    private val mediaItemDao: MediaItemDao,
+    private val downloadQueueDao: DownloadQueueDao,
     private val mediaMetadataDao: MediaMetadataDao,
     private val searchHistoryDao: SearchHistoryDao,
     private val playlistDao: PlaylistDao,
@@ -47,6 +53,8 @@ class DownloadRepository(
     val allDownloads: Flow<List<DownloadEntity>> = downloadDao.observeAllDownloads()
     val completedDownloads: Flow<List<DownloadEntity>> = downloadDao.observeCompletedDownloads()
     val queueDownloads: Flow<List<DownloadEntity>> = downloadDao.observeQueueDownloads()
+    val activeDownloadQueue: Flow<List<DownloadQueue>> = downloadQueueDao.observeQueue()
+    val allMediaItems: Flow<List<MediaItem>> = mediaItemDao.observeAllMediaItems()
     val favorites: Flow<List<DownloadEntity>> = downloadDao.observeFavorites()
     val recentlyPlayed: Flow<List<DownloadEntity>> = downloadDao.observeRecentlyPlayed()
     val recentSearches: Flow<List<SearchHistoryEntity>> = searchHistoryDao.observeRecentSearches()
@@ -61,8 +69,8 @@ class DownloadRepository(
                 title = analyzed.title,
                 filePath = null,
                 downloadStatus = "ANALYZED",
-                platform = analyzed.platform.name,
-                mediaType = primaryFormat?.mediaType?.name ?: "VIDEO",
+                sourceHost = analyzed.sourceHost,
+                mediaType = primaryFormat?.mediaType?.name ?: analyzed.mediaType.name,
                 author = analyzed.author,
                 thumbnailUrl = analyzed.thumbnailUrl,
                 durationMs = analyzed.durationMs,
@@ -77,13 +85,15 @@ class DownloadRepository(
         analyzed: AnalyzedMedia,
         format: MediaFormatOption,
         customTitle: String,
-        customFolder: String?
+        customFolder: String?,
+        alsoSaveCoverArt: Boolean = false
     ): Long {
         val cleanTitle = customTitle.trim().ifBlank { analyzed.title }
-        val safeBaseName = MediaResponseParser.sanitizeFileName(cleanTitle)
+        val safeBaseName = UrlMediaBot.sanitizeFileName(cleanTitle)
             .ifBlank { "savebox_${System.currentTimeMillis()}" }
         val fileName = "${safeBaseName}_${System.currentTimeMillis() % 10000}.${format.extension}"
-        val folderCategory = storageManager.resolveTargetFolder(analyzed.platform, format.mediaType, customFolder)
+        val folderCategory = storageManager.resolveTargetFolder(format.mediaType, customFolder)
+        val targetPath = storageManager.getTargetFile(folderCategory, fileName).absolutePath
 
         val workTag = "savebox_dl_${UUID.randomUUID()}"
         val entity = DownloadEntity(
@@ -91,7 +101,7 @@ class DownloadRepository(
             fileName = fileName,
             sourceUrl = analyzed.sourceUrl,
             downloadUrl = format.downloadUrl,
-            platform = analyzed.platform.name,
+            sourceHost = analyzed.sourceHost,
             mediaType = format.mediaType.name,
             qualityLabel = format.label,
             author = analyzed.author,
@@ -104,13 +114,28 @@ class DownloadRepository(
         )
         val insertedId = downloadDao.insert(entity)
 
+        downloadQueueDao.upsert(
+            DownloadQueue(
+                downloadId = insertedId,
+                title = cleanTitle,
+                url = analyzed.sourceUrl,
+                downloadUrl = format.downloadUrl,
+                filePath = targetPath,
+                status = "QUEUED",
+                downloadedBytes = 0L,
+                totalBytes = format.estimatedSizeBytes ?: 0L,
+                progressPercent = 0,
+                workId = workTag
+            )
+        )
+
         mediaMetadataDao.upsert(
             MediaMetadataEntity(
                 url = analyzed.sourceUrl,
                 title = cleanTitle,
-                filePath = storageManager.getTargetFile(folderCategory, fileName).absolutePath,
+                filePath = targetPath,
                 downloadStatus = "QUEUED",
-                platform = analyzed.platform.name,
+                sourceHost = analyzed.sourceHost,
                 mediaType = format.mediaType.name,
                 author = analyzed.author,
                 thumbnailUrl = analyzed.thumbnailUrl,
@@ -121,17 +146,18 @@ class DownloadRepository(
             )
         )
 
-        scheduleWorker(insertedId, workTag)
+        scheduleWorker(insertedId, workTag, alsoSaveCoverArt)
         return insertedId
     }
 
-    private fun scheduleWorker(downloadId: Long, uniqueName: String) {
+    private fun scheduleWorker(downloadId: Long, uniqueName: String, alsoSaveCoverArt: Boolean = false) {
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
 
         val input = Data.Builder()
             .putLong(DownloadWorker.KEY_DOWNLOAD_ID, downloadId)
+            .putBoolean(DownloadWorker.KEY_SAVE_COVER_ART, alsoSaveCoverArt)
             .build()
 
         val request = OneTimeWorkRequestBuilder<DownloadWorker>()
@@ -149,6 +175,7 @@ class DownloadRepository(
 
     suspend fun pauseDownload(item: DownloadEntity) {
         downloadDao.markStatus(item.id, "PAUSED", null)
+        downloadQueueDao.updateStatus(item.id, "PAUSED", null)
         mediaMetadataDao.updateFileAndStatus(item.sourceUrl, item.localFilePath, "PAUSED")
         item.workId?.let { workManager.cancelUniqueWork(it) }
     }
@@ -156,6 +183,7 @@ class DownloadRepository(
     suspend fun resumeOrRetryDownload(item: DownloadEntity) {
         val uniqueName = item.workId ?: "savebox_dl_${UUID.randomUUID()}"
         downloadDao.update(item.copy(status = "QUEUED", errorMessage = null, workId = uniqueName))
+        downloadQueueDao.updateStatus(item.id, "QUEUED", null)
         mediaMetadataDao.updateFileAndStatus(item.sourceUrl, item.localFilePath, "QUEUED")
         scheduleWorker(item.id, uniqueName)
     }
@@ -164,7 +192,9 @@ class DownloadRepository(
         item.workId?.let { workManager.cancelUniqueWork(it) }
         item.localFilePath?.let { path ->
             runCatching { File(path).delete() }
+            mediaItemDao.deleteByFilePath(path)
         }
+        downloadQueueDao.deleteByDownloadId(item.id)
         downloadDao.deleteById(item.id)
         mediaMetadataDao.updateFileAndStatus(item.sourceUrl, null, "DELETED")
     }
@@ -183,7 +213,7 @@ class DownloadRepository(
             val oldFile = File(oldPath)
             if (oldFile.exists()) {
                 val ext = oldFile.extension.ifBlank { "mp4" }
-                val clean = MediaResponseParser.sanitizeFileName(trimmed)
+                val clean = UrlMediaBot.sanitizeFileName(trimmed)
                 val target = File(oldFile.parentFile, "$clean.$ext")
                 if (oldFile.renameTo(target)) {
                     updatedPath = target.absolutePath
@@ -193,6 +223,11 @@ class DownloadRepository(
         }
         downloadDao.update(item.copy(title = trimmed, fileName = updatedFileName, localFilePath = updatedPath))
         mediaMetadataDao.updateFileAndStatus(item.sourceUrl, updatedPath, item.status)
+        if (updatedPath != null) {
+            mediaItemDao.getByFilePath(oldPath ?: updatedPath)?.let { mi ->
+                mediaItemDao.upsert(mi.copy(title = trimmed, filePath = updatedPath))
+            }
+        }
     }
 
     suspend fun updatePlaybackPosition(downloadId: Long, positionMs: Long, incrementPlayCount: Boolean) {
@@ -204,14 +239,14 @@ class DownloadRepository(
         )
     }
 
-    suspend fun recordSearch(query: String, scope: SearchPlatformScope, isUrl: Boolean) {
+    suspend fun recordSearch(query: String, scope: SearchScope, isUrl: Boolean) {
         val trimmed = query.trim()
         if (trimmed.isEmpty()) return
         searchHistoryDao.deleteByQuery(trimmed)
         searchHistoryDao.insert(
             SearchHistoryEntity(
                 query = trimmed,
-                platformScope = scope.name,
+                searchScope = scope.name,
                 isUrl = isUrl
             )
         )
@@ -219,7 +254,10 @@ class DownloadRepository(
 
     suspend fun clearSearchHistory() = searchHistoryDao.clearAll()
 
-    suspend fun clearCompletedHistory() = downloadDao.clearNonCompleted()
+    suspend fun clearCompletedHistory() {
+        downloadDao.clearNonCompleted()
+        downloadQueueDao.clearInactive()
+    }
 
     suspend fun createPlaylist(name: String, description: String = ""): Long {
         return playlistDao.insertPlaylist(PlaylistEntity(name = name.trim(), description = description.trim()))
@@ -242,7 +280,7 @@ class DownloadRepository(
                     title = it.title,
                     sourceUrl = it.sourceUrl,
                     downloadUrl = it.downloadUrl,
-                    platform = it.platform,
+                    sourceHost = it.sourceHost,
                     mediaType = it.mediaType,
                     qualityLabel = it.qualityLabel,
                     author = it.author,
@@ -280,10 +318,10 @@ class DownloadRepository(
                 downloadDao.insert(
                     DownloadEntity(
                         title = rec.title,
-                        fileName = MediaResponseParser.sanitizeFileName(rec.title),
+                        fileName = UrlMediaBot.sanitizeFileName(rec.title),
                         sourceUrl = rec.sourceUrl,
                         downloadUrl = rec.downloadUrl,
-                        platform = rec.platform,
+                        sourceHost = rec.sourceHost,
                         mediaType = rec.mediaType,
                         qualityLabel = rec.qualityLabel,
                         author = rec.author,

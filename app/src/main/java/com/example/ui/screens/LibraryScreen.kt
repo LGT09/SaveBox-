@@ -1,6 +1,10 @@
 package com.example.ui.screens
 
 import android.content.Intent
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -31,6 +35,7 @@ import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AudioFile
+import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
@@ -38,13 +43,18 @@ import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.QueueMusic
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
@@ -52,6 +62,7 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -79,13 +90,10 @@ import com.example.R
 import com.example.data.local.DownloadEntity
 import com.example.data.local.PlaylistWithTracks
 import com.example.model.LibraryFilter
-import com.example.model.MediaPlatform
 import com.example.model.MediaType
 import com.example.model.SortOption
 import com.example.ui.components.FormatUtils
-import com.example.ui.components.LiquidGlassCard
-import com.example.ui.theme.AuroraViolet
-import com.example.ui.theme.ElectricCyan
+import com.example.ui.components.GlassCard
 import com.example.ui.theme.EmeraldMint
 import com.example.ui.viewmodel.MainViewModel
 import java.io.File
@@ -96,12 +104,14 @@ fun LibraryScreen(
     onPlayMedia: (DownloadEntity) -> Unit
 ) {
     val items by viewModel.filteredLibraryItems.collectAsStateWithLifecycle()
+    val allCompleted by viewModel.completedDownloads.collectAsStateWithLifecycle()
     val searchQuery by viewModel.librarySearchQuery.collectAsStateWithLifecycle()
     val filter by viewModel.libraryFilter.collectAsStateWithLifecycle()
     val sort by viewModel.librarySort.collectAsStateWithLifecycle()
     val folderFilter by viewModel.selectedFolderFilter.collectAsStateWithLifecycle()
     val isGridView by viewModel.isLibraryGridView.collectAsStateWithLifecycle()
     val playlists by viewModel.playlists.collectAsStateWithLifecycle()
+    val isScanning by viewModel.isScanningDeviceMedia.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
     var sortMenuExpanded by remember { mutableStateOf(false) }
@@ -109,14 +119,50 @@ fun LibraryScreen(
     var playlistPickerTarget by remember { mutableStateOf<DownloadEntity?>(null) }
     var showCreatePlaylistDialog by remember { mutableStateOf(false) }
 
+    val photoVideoPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickMultipleVisualMedia(25)
+    ) { uris ->
+        if (uris.isNotEmpty()) {
+            viewModel.importPickedMedia(uris, mediaTypeHint = null)
+        }
+    }
+
+    val songPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris ->
+        if (uris.isNotEmpty()) {
+            viewModel.importPickedMedia(uris, mediaTypeHint = MediaType.AUDIO)
+        }
+    }
+
+    val folderScannerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            }
+            viewModel.onFolderGranted(uri, isSecondary = false)
+        }
+    }
+
+    val photoCount = remember(allCompleted) { allCompleted.count { it.mediaType == MediaType.IMAGE.name } }
+    val videoCount = remember(allCompleted) { allCompleted.count { it.mediaType == MediaType.VIDEO.name } }
+    val songCount = remember(allCompleted) { allCompleted.count { it.mediaType == MediaType.AUDIO.name } }
+
     fun shareFile(entity: DownloadEntity) {
-        val path = entity.localFilePath ?: return
-        val file = File(path)
-        if (!file.exists()) {
+        val path = entity.localFilePath
+        val uri = if (!path.isNullOrBlank() && File(path).exists()) {
+            FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", File(path))
+        } else {
+            entity.localUri?.let { Uri.parse(it) }
+        } ?: run {
             viewModel.showMessage("Local file unavailable to share")
             return
         }
-        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
         val mime = when (MediaType.fromString(entity.mediaType)) {
             MediaType.AUDIO -> "audio/*"
             MediaType.IMAGE -> "image/*"
@@ -127,7 +173,9 @@ fun LibraryScreen(
             putExtra(Intent.EXTRA_STREAM, uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        context.startActivity(Intent.createChooser(shareIntent, "Share ${entity.title}"))
+        runCatching {
+            context.startActivity(Intent.createChooser(shareIntent, "Share ${entity.title}"))
+        }
     }
 
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
@@ -147,18 +195,30 @@ fun LibraryScreen(
             ) {
                 Column {
                     Text(
-                        text = "SaveBox Library",
+                        text = "Media Hub & Library",
                         style = MaterialTheme.typography.headlineMedium,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "${items.size} offline saved files",
+                        text = "$photoCount Photos • $videoCount Videos • $songCount Songs",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = { viewModel.scanDeviceMedia(silent = false) },
+                        enabled = !isScanning,
+                        modifier = Modifier.testTag("library_scan_button")
+                    ) {
+                        if (isScanning) {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                        } else {
+                            Icon(Icons.Filled.Refresh, contentDescription = "Scan Media & Cover Art")
+                        }
+                    }
+
                     Box {
                         IconButton(
                             onClick = { sortMenuExpanded = true },
@@ -201,11 +261,56 @@ fun LibraryScreen(
                 }
             }
 
+            // Glass Device Media Scanner & Quick Picker Bar
+            GlassCard(cornerRadius = 20.dp, contentPadding = 10.dp) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            photoVideoPicker.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)
+                            )
+                        },
+                        shape = RoundedCornerShape(14.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Icon(Icons.Filled.PhotoLibrary, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Photos & Videos", style = MaterialTheme.typography.labelMedium)
+                    }
+                    OutlinedButton(
+                        onClick = { songPicker.launch(arrayOf("audio/*")) },
+                        shape = RoundedCornerShape(14.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Icon(Icons.Filled.LibraryMusic, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Add Songs", style = MaterialTheme.typography.labelMedium)
+                    }
+                    OutlinedButton(
+                        onClick = { folderScannerLauncher.launch(null) },
+                        shape = RoundedCornerShape(14.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Icon(Icons.Filled.CreateNewFolder, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Scan Folder", style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
             // Search bar
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { viewModel.setLibrarySearchQuery(it) },
-                placeholder = { Text("Search SaveBox files...") },
+                placeholder = { Text("Search photos, videos, songs, artists...") },
                 leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
                 singleLine = true,
                 shape = RoundedCornerShape(16.dp),
@@ -214,9 +319,9 @@ fun LibraryScreen(
                     .testTag("library_search_input")
             )
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
-            // Type / Category Filter Chips
+            // Dedicated Sections: All, Photos, Videos, Songs, Favorites, Recent, Playlists
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -224,10 +329,16 @@ fun LibraryScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 LibraryFilter.entries.forEach { lf ->
+                    val suffix = when (lf) {
+                        LibraryFilter.IMAGES -> " ($photoCount)"
+                        LibraryFilter.VIDEOS -> " ($videoCount)"
+                        LibraryFilter.MUSIC -> " ($songCount)"
+                        else -> ""
+                    }
                     FilterChip(
                         selected = filter == lf,
                         onClick = { viewModel.setLibraryFilter(lf) },
-                        label = { Text(lf.label) }
+                        label = { Text("${lf.label}$suffix") }
                     )
                 }
             }
@@ -274,7 +385,7 @@ fun LibraryScreen(
                     onCreatePlaylist = { showCreatePlaylistDialog = true }
                 )
             } else if (items.isEmpty()) {
-                LiquidGlassCard(cornerRadius = 24.dp, contentPadding = 24.dp) {
+                GlassCard(cornerRadius = 24.dp, contentPadding = 24.dp) {
                     Column(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalAlignment = Alignment.CenterHorizontally
@@ -286,9 +397,9 @@ fun LibraryScreen(
                             modifier = Modifier.size(44.dp)
                         )
                         Spacer(modifier = Modifier.height(10.dp))
-                        Text("No SaveBox media matches this filter", style = MaterialTheme.typography.titleMedium)
+                        Text("No SaveBox media in this section yet", style = MaterialTheme.typography.titleMedium)
                         Text(
-                            text = "Downloaded videos, music, and saved WhatsApp statuses appear here.",
+                            text = "Tap Photos & Videos, Add Songs, or Scan Folder above to load your media with cover art.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -448,6 +559,24 @@ fun LibraryScreen(
     }
 }
 
+private fun resolveCoverModel(item: DownloadEntity): Any {
+    val thumb = item.thumbnailUrl
+    if (!thumb.isNullOrBlank()) {
+        if (thumb.startsWith("/")) {
+            val f = File(thumb)
+            if (f.exists()) return f
+        } else {
+            return thumb
+        }
+    }
+    if (item.mediaType != MediaType.AUDIO.name) {
+        val local = item.localFilePath?.let { File(it) }?.takeIf { it.exists() }
+        if (local != null) return local
+        if (!item.localUri.isNullOrBlank()) return item.localUri
+    }
+    return R.drawable.img_album_placeholder
+}
+
 @Composable
 private fun PlaylistsSection(
     playlists: List<PlaylistWithTracks>,
@@ -456,7 +585,7 @@ private fun PlaylistsSection(
     onCreatePlaylist: () -> Unit
 ) {
     if (playlists.isEmpty()) {
-        LiquidGlassCard(cornerRadius = 22.dp, contentPadding = 22.dp, onClick = onCreatePlaylist) {
+        GlassCard(cornerRadius = 22.dp, contentPadding = 22.dp, onClick = onCreatePlaylist) {
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally
@@ -477,7 +606,7 @@ private fun PlaylistsSection(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             items(playlists, key = { it.playlist.id }) { item ->
-                LiquidGlassCard(cornerRadius = 20.dp, contentPadding = 14.dp) {
+                GlassCard(cornerRadius = 20.dp, contentPadding = 14.dp) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -544,18 +673,22 @@ private fun LibraryGridCard(
     onDelete: () -> Unit
 ) {
     var menuOpen by remember { mutableStateOf(false) }
+    val mType = MediaType.fromString(item.mediaType)
+    val coverModel = remember(item.id, item.thumbnailUrl, item.localFilePath, item.localUri) {
+        resolveCoverModel(item)
+    }
 
-    LiquidGlassCard(cornerRadius = 20.dp, contentPadding = 10.dp, onClick = onPlay) {
+    GlassCard(cornerRadius = 20.dp, contentPadding = 10.dp, onClick = onPlay) {
         Box {
             AsyncImage(
-                model = item.thumbnailUrl ?: item.localFilePath ?: R.drawable.img_album_placeholder,
+                model = coverModel,
                 contentDescription = item.title,
                 placeholder = painterResource(id = R.drawable.img_album_placeholder),
                 error = painterResource(id = R.drawable.img_album_placeholder),
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(112.dp)
+                    .height(118.dp)
                     .clip(RoundedCornerShape(14.dp))
             )
 
@@ -567,7 +700,7 @@ private fun LibraryGridCard(
                     .padding(6.dp)
             ) {
                 Icon(
-                    imageVector = when (MediaType.fromString(item.mediaType)) {
+                    imageVector = when (mType) {
                         MediaType.AUDIO -> Icons.Filled.AudioFile
                         MediaType.IMAGE -> Icons.Filled.Image
                         MediaType.VIDEO -> Icons.Filled.VideoLibrary
@@ -580,18 +713,38 @@ private fun LibraryGridCard(
                 )
             }
 
+            if (item.durationMs > 0L) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(6.dp)
+                ) {
+                    Text(
+                        text = FormatUtils.formatDuration(item.durationMs),
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
+
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(6.dp)
                     .size(32.dp)
                     .clip(CircleShape)
-                    .background(Brush.linearGradient(listOf(ElectricCyan, AuroraViolet))),
+                    .background(
+                        Brush.linearGradient(
+                            listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.secondary)
+                        )
+                    ),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = Icons.Filled.PlayArrow,
-                    contentDescription = "Play",
+                    imageVector = if (mType == MediaType.IMAGE) Icons.Filled.Visibility else Icons.Filled.PlayArrow,
+                    contentDescription = if (mType == MediaType.IMAGE) "View Photo" else "Play",
                     tint = MaterialTheme.colorScheme.onPrimary,
                     modifier = Modifier.size(18.dp)
                 )
@@ -611,10 +764,11 @@ private fun LibraryGridCard(
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = "${item.folderCategory} • ${FormatUtils.formatBytes(item.fileSizeBytes)}",
+                    text = "${item.author ?: item.folderCategory} • ${FormatUtils.formatBytes(item.fileSizeBytes)}",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
             Box {
@@ -652,14 +806,17 @@ private fun LibraryListCard(
     onDelete: () -> Unit
 ) {
     var menuOpen by remember { mutableStateOf(false) }
+    val coverModel = remember(item.id, item.thumbnailUrl, item.localFilePath, item.localUri) {
+        resolveCoverModel(item)
+    }
 
-    LiquidGlassCard(cornerRadius = 18.dp, contentPadding = 12.dp, onClick = onPlay) {
+    GlassCard(cornerRadius = 18.dp, contentPadding = 12.dp, onClick = onPlay) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
             AsyncImage(
-                model = item.thumbnailUrl ?: item.localFilePath ?: R.drawable.img_album_placeholder,
+                model = coverModel,
                 contentDescription = item.title,
                 placeholder = painterResource(id = R.drawable.img_album_placeholder),
                 error = painterResource(id = R.drawable.img_album_placeholder),
@@ -677,10 +834,15 @@ private fun LibraryListCard(
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = "${MediaPlatform.fromString(item.platform).displayName} • ${item.qualityLabel} • ${FormatUtils.formatBytes(item.fileSizeBytes)}",
+                    text = listOfNotNull(
+                        item.author ?: item.sourceHost,
+                        item.durationMs.takeIf { it > 0L }?.let { FormatUtils.formatDuration(it) },
+                        FormatUtils.formatBytes(item.fileSizeBytes)
+                    ).joinToString(" • "),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
             IconButton(onClick = onToggleFavorite) {

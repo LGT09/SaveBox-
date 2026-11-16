@@ -8,16 +8,20 @@ import androidx.room.RoomDatabase
 @Database(
     entities = [
         DownloadEntity::class,
+        MediaItem::class,
+        DownloadQueue::class,
         MediaMetadataEntity::class,
         SearchHistoryEntity::class,
         PlaylistEntity::class,
         PlaylistTrackCrossRef::class
     ],
-    version = 2,
+    version = 4,
     exportSchema = false
 )
 abstract class SaveBoxDatabase : RoomDatabase() {
     abstract fun downloadDao(): DownloadDao
+    abstract fun mediaItemDao(): MediaItemDao
+    abstract fun downloadQueueDao(): DownloadQueueDao
     abstract fun mediaMetadataDao(): MediaMetadataDao
     abstract fun searchHistoryDao(): SearchHistoryDao
     abstract fun playlistDao(): PlaylistDao
