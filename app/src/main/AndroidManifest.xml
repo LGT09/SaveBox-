@@ -22,6 +22,10 @@
         android:theme="@style/Theme.SaveBox"
         android:usesCleartextTraffic="false">
 
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="ca-app-pub-4601877857713565~1719613958" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
