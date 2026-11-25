@@ -26,16 +26,19 @@ import com.traxxiontech.savebox.data.status.StatusSaverRepository
 import com.traxxiontech.savebox.model.AnalyzedMedia
 import com.traxxiontech.savebox.model.AppThemeMode
 import com.traxxiontech.savebox.model.AppThemePalette
+import com.traxxiontech.savebox.model.BackgroundColorBlendMode
 import com.traxxiontech.savebox.model.DocumentFileEntry
 import com.traxxiontech.savebox.model.LibraryFilter
 import com.traxxiontech.savebox.model.LocalFolderMediaItem
 import com.traxxiontech.savebox.model.MediaFormatOption
 import com.traxxiontech.savebox.model.MediaType
+import com.traxxiontech.savebox.model.RepeatPlaybackMode
 import com.traxxiontech.savebox.model.SearchResultItem
 import com.traxxiontech.savebox.model.SearchScope
 import com.traxxiontech.savebox.model.SortOption
 import com.traxxiontech.savebox.model.StorageFolderBreakdown
 import com.traxxiontech.savebox.model.VisualizerStyle
+import com.traxxiontech.savebox.ui.theme.ImageColorExtractor
 import com.traxxiontech.savebox.player.AudioEffectsManager
 import com.traxxiontech.savebox.player.AudioPlayerState
 import com.traxxiontech.savebox.player.EqualizerState
@@ -720,6 +723,8 @@ class MainViewModel @Inject constructor(
             .ifEmpty { listOf(item) }
         val idx = queue.indexOfFirst { it.id == item.id }.coerceAtLeast(0)
         mediaControllerManager.playQueue(queue, idx, settings.value.autoResumePlayback)
+        mediaControllerManager.setRepeatMode(settings.value.defaultRepeatMode)
+        mediaControllerManager.setPlaybackSpeed(settings.value.defaultPlaybackSpeed)
     }
 
     fun addToAudioQueue(item: DownloadEntity) {
@@ -733,6 +738,7 @@ class MainViewModel @Inject constructor(
     fun skipPrevious() = mediaControllerManager.skipPrevious()
     fun toggleShuffle() = mediaControllerManager.toggleShuffle()
     fun cycleRepeatMode() = mediaControllerManager.cycleRepeatMode()
+    fun setRepeatMode(mode: RepeatPlaybackMode) = mediaControllerManager.setRepeatMode(mode)
     fun setPlaybackSpeed(speed: Float) = mediaControllerManager.setPlaybackSpeed(speed)
     fun setSleepTimer(option: SleepTimerOption) = mediaControllerManager.setSleepTimer(option)
     fun removeFromAudioQueue(index: Int) = mediaControllerManager.removeFromQueue(index)
@@ -816,9 +822,44 @@ class MainViewModel @Inject constructor(
     fun setNotificationsEnabled(enabled: Boolean) { viewModelScope.launch { settingsStore.setNotificationsEnabled(enabled) } }
     fun setAutoClipboardDetect(enabled: Boolean) { viewModelScope.launch { settingsStore.setAutoClipboardDetect(enabled) } }
     fun setAutoResumePlayback(enabled: Boolean) { viewModelScope.launch { settingsStore.setAutoResumePlayback(enabled) } }
+    fun setAutoPlayNext(enabled: Boolean) { viewModelScope.launch { settingsStore.setAutoPlayNext(enabled) } }
     fun setDefaultPlaybackSpeed(speed: Float) { viewModelScope.launch { settingsStore.setDefaultPlaybackSpeed(speed) } }
+    fun setDefaultRepeatMode(mode: RepeatPlaybackMode) { viewModelScope.launch { settingsStore.setDefaultRepeatMode(mode) } }
+    fun setDefaultSeekStepSec(seconds: Int) { viewModelScope.launch { settingsStore.setDefaultSeekStepSec(seconds) } }
+    fun setLibraryGridColumns(columns: Int) { viewModelScope.launch { settingsStore.setLibraryGridColumns(columns) } }
     fun setLanguage(lang: String) { viewModelScope.launch { settingsStore.setLanguage(lang) } }
     fun setCustomSubfolder(folder: String) { viewModelScope.launch { settingsStore.setCustomSubfolder(folder) } }
+
+    fun setCustomBackgroundImage(uri: Uri) {
+        viewModelScope.launch {
+            val result = ImageColorExtractor.saveBackgroundAndExtractTheme(getApplication(), uri)
+            if (result != null) {
+                val (path, extracted) = result
+                settingsStore.setCustomBackground(path, extracted)
+                _snackbarMessage.value = "Background wallpaper & matching colors applied"
+            } else {
+                _snackbarMessage.value = "Could not load selected background image"
+            }
+        }
+    }
+
+    fun removeCustomBackgroundImage() {
+        viewModelScope.launch {
+            settings.value.backgroundImagePath?.let { oldPath ->
+                runCatching { java.io.File(oldPath).delete() }
+            }
+            settingsStore.clearCustomBackground()
+            _snackbarMessage.value = "Custom background image removed"
+        }
+    }
+
+    fun setBackgroundColorBlendMode(mode: BackgroundColorBlendMode) {
+        viewModelScope.launch { settingsStore.setBackgroundColorBlendMode(mode) }
+    }
+
+    fun setBackgroundOverlayDim(dim: Float) {
+        viewModelScope.launch { settingsStore.setBackgroundOverlayDim(dim) }
+    }
 
     fun refreshStorageMetrics() {
         _storageBreakdown.value = storageManager.getStorageBreakdown()

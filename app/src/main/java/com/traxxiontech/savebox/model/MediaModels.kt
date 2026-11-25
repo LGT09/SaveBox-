@@ -22,6 +22,17 @@ enum class VisualizerStyle(val label: String) {
     DUAL_WAVE("Liquid Wave")
 }
 
+enum class RepeatPlaybackMode(val label: String) {
+    OFF("No Repeat"),
+    REPEAT_ONE("Repeat ×1"),
+    REPEAT_ALL("Auto Repeat")
+}
+
+enum class BackgroundColorBlendMode(val label: String) {
+    AUTO_FROM_IMAGE("Auto Match Image"),
+    MANUAL_PALETTE("Select Theme Color")
+}
+
 enum class MediaType(val label: String) {
     VIDEO("Video"),
     AUDIO("Audio"),

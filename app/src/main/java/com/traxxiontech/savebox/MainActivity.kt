@@ -32,7 +32,14 @@ class MainActivity : ComponentActivity() {
             SaveBoxTheme(
                 themeMode = settings.themeMode,
                 themePalette = settings.themePalette,
-                dynamicColor = settings.dynamicColor
+                dynamicColor = settings.dynamicColor,
+                backgroundImagePath = settings.backgroundImagePath,
+                backgroundColorBlendMode = settings.backgroundColorBlendMode,
+                backgroundOverlayDim = settings.backgroundOverlayDim,
+                extractedPrimaryArgb = settings.extractedPrimaryArgb,
+                extractedSecondaryArgb = settings.extractedSecondaryArgb,
+                extractedSurfaceArgb = settings.extractedSurfaceArgb,
+                extractedBackgroundArgb = settings.extractedBackgroundArgb
             ) {
                 SaveBoxRootShell(
                     viewModel = viewModel,

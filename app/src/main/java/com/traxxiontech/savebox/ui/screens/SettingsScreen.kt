@@ -3,7 +3,11 @@ package com.traxxiontech.savebox.ui.screens
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,10 +24,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.CleaningServices
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.GraphicEq
@@ -31,16 +37,20 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.PrivacyTip
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.Wallpaper
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -49,19 +59,27 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil.compose.AsyncImage
 import com.traxxiontech.savebox.model.AppThemeMode
 import com.traxxiontech.savebox.model.AppThemePalette
+import com.traxxiontech.savebox.model.BackgroundColorBlendMode
+import com.traxxiontech.savebox.model.RepeatPlaybackMode
 import com.traxxiontech.savebox.model.VisualizerStyle
 import com.traxxiontech.savebox.ui.components.FormatUtils
 import com.traxxiontech.savebox.ui.components.GlassCard
 import com.traxxiontech.savebox.ui.components.SaveBoxAdUnits
 import com.traxxiontech.savebox.ui.viewmodel.MainViewModel
+import java.io.File
 
 @Composable
 fun SettingsScreen(
@@ -89,6 +107,12 @@ fun SettingsScreen(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
         uri?.let { viewModel.restoreBackup(it) }
+    }
+
+    val backgroundPhotoPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        uri?.let { viewModel.setCustomBackgroundImage(it) }
     }
 
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
@@ -179,6 +203,149 @@ fun SettingsScreen(
                 }
             }
 
+            // Custom Background Wallpaper & Adaptive Color Blend
+            item {
+                val bgFile = settings.backgroundImagePath?.let { File(it) }?.takeIf { it.exists() }
+                GlassCard(cornerRadius = 22.dp, contentPadding = 16.dp) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Wallpaper, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Custom Background Image & Theme", style = MaterialTheme.typography.titleMedium)
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "Use a photo as your SaveBox backdrop instead of the default aurora glass, then blend colors automatically or pick a theme palette.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    if (bgFile != null) {
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(132.dp)
+                        ) {
+                            AsyncImage(
+                                model = bgFile,
+                                contentDescription = "Active Background Wallpaper",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(10.dp))
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                backgroundPhotoPicker.launch(
+                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                )
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("settings_pick_background_button"),
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Icon(Icons.Filled.PhotoLibrary, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(if (bgFile != null) "Change Image" else "Choose Image")
+                        }
+                        if (bgFile != null) {
+                            OutlinedButton(
+                                onClick = { viewModel.removeCustomBackgroundImage() },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("settings_remove_background_button"),
+                                shape = RoundedCornerShape(14.dp)
+                            ) {
+                                Icon(
+                                    Icons.Filled.Delete,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Remove", color = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                    }
+
+                    if (bgFile != null) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text("Theme Color Matching", style = MaterialTheme.typography.labelLarge)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            BackgroundColorBlendMode.entries.forEach { blendMode ->
+                                FilterChip(
+                                    selected = settings.backgroundColorBlendMode == blendMode,
+                                    onClick = { viewModel.setBackgroundColorBlendMode(blendMode) },
+                                    label = { Text(blendMode.label) }
+                                )
+                            }
+                        }
+
+                        if (settings.backgroundColorBlendMode == BackgroundColorBlendMode.AUTO_FROM_IMAGE &&
+                            settings.extractedPrimaryArgb != null
+                        ) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Text(
+                                    "Extracted Palette:",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                listOfNotNull(
+                                    settings.extractedPrimaryArgb,
+                                    settings.extractedSecondaryArgb,
+                                    settings.extractedSurfaceArgb
+                                ).forEach { argb ->
+                                    Box(
+                                        modifier = Modifier
+                                            .size(22.dp)
+                                            .clip(CircleShape)
+                                            .background(Color(argb.toInt()))
+                                            .border(1.dp, Color.White.copy(alpha = 0.5f), CircleShape)
+                                    )
+                                }
+                            }
+                        } else if (settings.backgroundColorBlendMode == BackgroundColorBlendMode.MANUAL_PALETTE) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                "Using selected Liquid Glass palette above to blend with your photo.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = "Background Dimness: ${(settings.backgroundOverlayDim * 100).toInt()}%",
+                            style = MaterialTheme.typography.labelLarge
+                        )
+                        Slider(
+                            value = settings.backgroundOverlayDim,
+                            onValueChange = { viewModel.setBackgroundOverlayDim(it) },
+                            valueRange = 0.10f..0.85f
+                        )
+                    }
+                }
+            }
+
             // Downloads & Notifications
             item {
                 GlassCard(cornerRadius = 22.dp, contentPadding = 16.dp) {
@@ -224,10 +391,10 @@ fun SettingsScreen(
                 }
             }
 
-            // Media Player & Visualizer Settings
+            // Media Player & Playback Settings
             item {
                 GlassCard(cornerRadius = 22.dp, contentPadding = 16.dp) {
-                    Text("Media Player & Visualizer", style = MaterialTheme.typography.titleMedium)
+                    Text("Media Playback Settings", style = MaterialTheme.typography.titleMedium)
                     Spacer(modifier = Modifier.height(8.dp))
                     SettingToggleRow(
                         title = "Auto Resume Playback",
@@ -235,6 +402,42 @@ fun SettingsScreen(
                         checked = settings.autoResumePlayback,
                         onCheckedChange = { viewModel.setAutoResumePlayback(it) }
                     )
+                    SettingToggleRow(
+                        title = "Auto-Play Next Item",
+                        subtitle = "Continue automatically to the next track or video",
+                        checked = settings.autoPlayNext,
+                        onCheckedChange = { viewModel.setAutoPlayNext(it) }
+                    )
+                    Text("Default Repeat Mode", style = MaterialTheme.typography.labelLarge)
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        RepeatPlaybackMode.entries.forEach { mode ->
+                            FilterChip(
+                                selected = settings.defaultRepeatMode == mode,
+                                onClick = { viewModel.setDefaultRepeatMode(mode) },
+                                label = { Text(mode.label) }
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("Video Seek / Skip Step", style = MaterialTheme.typography.labelLarge)
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf(5, 10, 15, 30).forEach { step ->
+                            FilterChip(
+                                selected = settings.defaultSeekStepSec == step,
+                                onClick = { viewModel.setDefaultSeekStepSec(step) },
+                                label = { Text("${step}s") }
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Filled.GraphicEq, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.width(6.dp))

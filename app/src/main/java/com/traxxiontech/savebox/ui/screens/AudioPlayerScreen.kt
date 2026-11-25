@@ -45,6 +45,7 @@ import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -74,6 +75,7 @@ import androidx.media3.common.Player
 import coil.compose.AsyncImage
 import com.traxxiontech.savebox.R
 import com.traxxiontech.savebox.data.local.DownloadEntity
+import com.traxxiontech.savebox.model.RepeatPlaybackMode
 import com.traxxiontech.savebox.model.VisualizerStyle
 import com.traxxiontech.savebox.player.SleepTimerOption
 import com.traxxiontech.savebox.ui.components.AdBannerView
@@ -82,6 +84,9 @@ import com.traxxiontech.savebox.ui.components.FormatUtils
 import com.traxxiontech.savebox.ui.components.GlassCard
 import com.traxxiontech.savebox.ui.theme.EmeraldMint
 import com.traxxiontech.savebox.ui.viewmodel.MainViewModel
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.material3.Surface
+import androidx.compose.ui.platform.testTag
 import java.io.File
 
 private fun resolveAudioArtworkModel(track: DownloadEntity): Any {
@@ -201,7 +206,14 @@ fun AudioPlayerScreen(
     var showEqSheet by remember { mutableStateOf(false) }
     var showQueueSheet by remember { mutableStateOf(false) }
     var showSleepSheet by remember { mutableStateOf(false) }
+    var showPlaybackSettingsSheet by remember { mutableStateOf(false) }
     var showLyrics by remember { mutableStateOf(false) }
+
+    val activeRepeatMode = when (state.repeatMode) {
+        Player.REPEAT_MODE_ONE -> RepeatPlaybackMode.REPEAT_ONE
+        Player.REPEAT_MODE_ALL -> RepeatPlaybackMode.REPEAT_ALL
+        else -> RepeatPlaybackMode.OFF
+    }
 
     val track = state.currentTrack
     val isFav = track != null && favorites.any { it.id == track.id }
@@ -269,6 +281,16 @@ fun AudioPlayerScreen(
                             imageVector = Icons.Filled.Lyrics,
                             contentDescription = "Lyrics",
                             tint = if (showLyrics) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    IconButton(
+                        onClick = { showPlaybackSettingsSheet = true },
+                        modifier = Modifier.testTag("audio_playback_settings_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Tune,
+                            contentDescription = "Playback Settings",
+                            tint = MaterialTheme.colorScheme.primary
                         )
                     }
                 }
@@ -487,7 +509,117 @@ fun AudioPlayerScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // On-screen Liquid Glass Quick Pills: Repeat Mode, Sleep Timer, Playback Settings
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = if (activeRepeatMode != RepeatPlaybackMode.OFF) {
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
+                    } else {
+                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.52f)
+                    },
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .clickable { viewModel.cycleRepeatMode() }
+                        .testTag("audio_repeat_mode_pill")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = if (activeRepeatMode == RepeatPlaybackMode.REPEAT_ONE) {
+                                Icons.Filled.RepeatOne
+                            } else {
+                                Icons.Filled.Repeat
+                            },
+                            contentDescription = "Repeat Mode",
+                            tint = if (activeRepeatMode != RepeatPlaybackMode.OFF) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = activeRepeatMode.label,
+                            style = MaterialTheme.typography.labelMedium
+                        )
+                    }
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = if (state.sleepTimerRemainingSec > 0L) {
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
+                    } else {
+                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.52f)
+                    },
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .clickable { showSleepSheet = true }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Bedtime,
+                            contentDescription = "Sleep Timer",
+                            tint = if (state.sleepTimerRemainingSec > 0L) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        val sleepLabel = if (state.sleepTimerRemainingSec > 0L) {
+                            val m = state.sleepTimerRemainingSec / 60
+                            val s = state.sleepTimerRemainingSec % 60
+                            "Sleep ${m}:${s.toString().padStart(2, '0')}"
+                        } else {
+                            "Sleep Timer"
+                        }
+                        Text(text = sleepLabel, style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.52f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .clickable { showPlaybackSettingsSheet = true }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Tune,
+                            contentDescription = "Playback Settings",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Playback Settings", style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
 
             // Utility Bar: Equalizer, Speed, Sleep Timer, Queue
             GlassCard(cornerRadius = 20.dp, contentPadding = 10.dp) {
@@ -656,6 +788,88 @@ fun AudioPlayerScreen(
                         }
                     }
                 }
+            }
+        }
+    }
+
+    if (showPlaybackSettingsSheet) {
+        ModalBottomSheet(onDismissRequest = { showPlaybackSettingsSheet = false }) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text("Audio Playback Settings", style = MaterialTheme.typography.titleLarge)
+
+                Text("Repeat Mode", style = MaterialTheme.typography.labelLarge)
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    RepeatPlaybackMode.entries.forEach { mode ->
+                        FilterChip(
+                            selected = activeRepeatMode == mode,
+                            onClick = {
+                                viewModel.setRepeatMode(mode)
+                                viewModel.setDefaultRepeatMode(mode)
+                            },
+                            label = { Text(mode.label) }
+                        )
+                    }
+                }
+
+                Text("Playback Speed", style = MaterialTheme.typography.labelLarge)
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf(0.75f, 1.0f, 1.25f, 1.5f, 2.0f).forEach { spd ->
+                        FilterChip(
+                            selected = state.playbackSpeed == spd,
+                            onClick = {
+                                viewModel.setPlaybackSpeed(spd)
+                                viewModel.setDefaultPlaybackSpeed(spd)
+                            },
+                            label = { Text("${spd}x") }
+                        )
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Auto Resume Playback", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "Resume tracks from last saved timestamp",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = settings.autoResumePlayback,
+                        onCheckedChange = { viewModel.setAutoResumePlayback(it) }
+                    )
+                }
+
+                Text("Visualizer Style", style = MaterialTheme.typography.labelLarge)
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    VisualizerStyle.entries.forEach { vStyle ->
+                        FilterChip(
+                            selected = settings.visualizerStyle == vStyle,
+                            onClick = { viewModel.setVisualizerStyle(vStyle) },
+                            label = { Text(vStyle.label) }
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
             }
         }
     }

@@ -5,8 +5,16 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,6 +22,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -31,6 +40,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.Add
@@ -47,7 +57,7 @@ import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PhotoLibrary
-import androidx.compose.material.icons.automirrored.filled.QueueMusic
+import androidx.compose.material.icons.filled.Pinch
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
@@ -69,7 +79,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -77,6 +90,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -100,6 +115,8 @@ import com.traxxiontech.savebox.ui.components.ThumbnailDownloadProgressOverlay
 import com.traxxiontech.savebox.ui.theme.EmeraldMint
 import com.traxxiontech.savebox.ui.viewmodel.MainViewModel
 import java.io.File
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
 @Composable
 fun LibraryScreen(
@@ -118,6 +135,19 @@ fun LibraryScreen(
     val isGridView by viewModel.isLibraryGridView.collectAsStateWithLifecycle()
     val playlists by viewModel.playlists.collectAsStateWithLifecycle()
     val isScanning by viewModel.isScanningDeviceMedia.collectAsStateWithLifecycle()
+    val settings by viewModel.settings.collectAsStateWithLifecycle()
+
+    var gridColumns by remember { mutableIntStateOf(settings.libraryGridColumns.coerceIn(3, 10)) }
+    var pinchScaleFloat by remember { mutableFloatStateOf(gridColumns.toFloat()) }
+    var isPinchingGrid by remember { mutableStateOf(false) }
+
+    LaunchedEffect(settings.libraryGridColumns) {
+        if (!isPinchingGrid) {
+            val clamped = settings.libraryGridColumns.coerceIn(3, 10)
+            gridColumns = clamped
+            pinchScaleFloat = clamped.toFloat()
+        }
+    }
 
     val displayItems = remember(items, queueDownloads, filter, searchQuery) {
         val activeItems = if (filter == LibraryFilter.ALL && searchQuery.isBlank()) {
@@ -130,6 +160,7 @@ fun LibraryScreen(
 
     val context = LocalContext.current
     var sortMenuExpanded by remember { mutableStateOf(false) }
+    var gridSizeMenuExpanded by remember { mutableStateOf(false) }
     var renameTarget by remember { mutableStateOf<DownloadEntity?>(null) }
     var playlistPickerTarget by remember { mutableStateOf<DownloadEntity?>(null) }
     var showCreatePlaylistDialog by remember { mutableStateOf(false) }
@@ -271,14 +302,92 @@ fun LibraryScreen(
                         }
                     }
 
-                    IconButton(
-                        onClick = { viewModel.toggleLibraryViewMode() },
-                        modifier = Modifier.testTag("library_view_toggle")
+                    // Liquid Glass Grid / List Segmented Toggle + Pinch Density Badge
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f))
                     ) {
-                        Icon(
-                            imageVector = if (isGridView) Icons.AutoMirrored.Filled.ViewList else Icons.Filled.GridView,
-                            contentDescription = "Toggle Grid or List"
-                        )
+                        Row(
+                            modifier = Modifier.padding(3.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(11.dp))
+                                    .background(
+                                        if (isGridView) MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)
+                                        else Color.Transparent
+                                    )
+                                    .clickable { if (!isGridView) viewModel.toggleLibraryViewMode() }
+                                    .padding(horizontal = 8.dp, vertical = 6.dp)
+                                    .testTag("library_grid_toggle")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.GridView,
+                                    contentDescription = "Grid View",
+                                    tint = if (isGridView) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(11.dp))
+                                    .background(
+                                        if (!isGridView) MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)
+                                        else Color.Transparent
+                                    )
+                                    .clickable { if (isGridView) viewModel.toggleLibraryViewMode() }
+                                    .padding(horizontal = 8.dp, vertical = 6.dp)
+                                    .testTag("library_list_toggle")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ViewList,
+                                    contentDescription = "List View",
+                                    tint = if (!isGridView) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    if (isGridView) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Box {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.20f),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable { gridSizeMenuExpanded = true }
+                                    .testTag("library_grid_density_chip")
+                            ) {
+                                Text(
+                                    text = "${gridColumns}×",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = gridSizeMenuExpanded,
+                                onDismissRequest = { gridSizeMenuExpanded = false }
+                            ) {
+                                (3..10).forEach { cols ->
+                                    DropdownMenuItem(
+                                        text = { Text(if (cols == gridColumns) "✓ ${cols}× Grid" else "${cols}× Grid") },
+                                        onClick = {
+                                            gridColumns = cols
+                                            pinchScaleFloat = cols.toFloat()
+                                            viewModel.setLibraryGridColumns(cols)
+                                            gridSizeMenuExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -431,25 +540,97 @@ fun LibraryScreen(
                     }
                 }
             } else if (isGridView) {
-                LazyVerticalGrid(
-                    columns = GridCells.Adaptive(minSize = 160.dp),
-                    contentPadding = PaddingValues(bottom = 130.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                val gridSpacing = when {
+                    gridColumns >= 7 -> 4.dp
+                    gridColumns >= 5 -> 6.dp
+                    else -> 10.dp
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .pointerInput(Unit) {
+                            awaitEachGesture {
+                                awaitFirstDown(requireUnconsumed = false)
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val pressedCount = event.changes.count { it.pressed }
+                                    if (pressedCount >= 2) {
+                                        val zoom = event.calculateZoom()
+                                        if (zoom != 1f && abs(zoom - 1f) > 0.004f) {
+                                            isPinchingGrid = true
+                                            pinchScaleFloat = (pinchScaleFloat * zoom).coerceIn(3f, 10f)
+                                            val snapped = pinchScaleFloat.roundToInt().coerceIn(3, 10)
+                                            if (snapped != gridColumns) {
+                                                gridColumns = snapped
+                                                viewModel.setLibraryGridColumns(snapped)
+                                            }
+                                            event.changes.forEach { it.consume() }
+                                        }
+                                    } else if (pressedCount == 0) {
+                                        isPinchingGrid = false
+                                        break
+                                    }
+                                }
+                            }
+                        }
+                        .testTag("library_pinch_grid_container")
                 ) {
-                    items(displayItems, key = { it.id }) { item ->
-                        LibraryGridCard(
-                            item = item,
-                            onPlay = {
-                                if (item.status == "COMPLETED") onPlayMedia(item)
-                            },
-                            onToggleFavorite = { viewModel.toggleFavorite(item) },
-                            onRename = { renameTarget = item },
-                            onAddToPlaylist = { playlistPickerTarget = item },
-                            onAddToQueue = { viewModel.addToAudioQueue(item) },
-                            onShare = { shareFile(item) },
-                            onDelete = { viewModel.deleteDownload(item) }
-                        )
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(gridColumns),
+                        contentPadding = PaddingValues(bottom = 130.dp),
+                        horizontalArrangement = Arrangement.spacedBy(gridSpacing),
+                        verticalArrangement = Arrangement.spacedBy(gridSpacing),
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        items(displayItems, key = { it.id }) { item ->
+                            LibraryGridCard(
+                                item = item,
+                                gridColumns = gridColumns,
+                                onPlay = {
+                                    if (item.status == "COMPLETED") onPlayMedia(item)
+                                },
+                                onToggleFavorite = { viewModel.toggleFavorite(item) },
+                                onRename = { renameTarget = item },
+                                onAddToPlaylist = { playlistPickerTarget = item },
+                                onAddToQueue = { viewModel.addToAudioQueue(item) },
+                                onShare = { shareFile(item) },
+                                onDelete = { viewModel.deleteDownload(item) }
+                            )
+                        }
+                    }
+
+                    androidx.compose.animation.AnimatedVisibility(
+                        visible = isPinchingGrid,
+                        enter = fadeIn(),
+                        exit = fadeOut(),
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = 10.dp)
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.6f))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Pinch,
+                                    contentDescription = "Pinch Grid Scale",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Grid ${gridColumns}×",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
                     }
                 }
             } else {
@@ -693,6 +874,7 @@ private fun PlaylistsSection(
 @Composable
 private fun LibraryGridCard(
     item: DownloadEntity,
+    gridColumns: Int,
     onPlay: () -> Unit,
     onToggleFavorite: () -> Unit,
     onRename: () -> Unit,
@@ -707,12 +889,15 @@ private fun LibraryGridCard(
         resolveCoverModel(item)
     }
 
-    GlassCard(cornerRadius = 20.dp, contentPadding = 10.dp, onClick = onPlay) {
+    if (gridColumns >= 7) {
+        // Ultra-dense 7x..10x iPhone photo/media sheet tile
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(118.dp)
-                .clip(RoundedCornerShape(14.dp))
+                .aspectRatio(1f)
+                .clip(RoundedCornerShape(8.dp))
+                .border(0.75.dp, Color.White.copy(alpha = 0.22f), RoundedCornerShape(8.dp))
+                .clickable(onClick = onPlay)
         ) {
             AsyncImage(
                 model = coverModel,
@@ -727,7 +912,107 @@ private fun LibraryGridCard(
                 status = item.status,
                 isIndeterminate = item.status == "DOWNLOADING" && item.fileSizeBytes <= 0L,
                 modifier = Modifier.fillMaxSize(),
-                ringSize = 48.dp
+                ringSize = 24.dp
+            )
+            if (mType == MediaType.VIDEO) {
+                Icon(
+                    imageVector = Icons.Filled.PlayArrow,
+                    contentDescription = "Video",
+                    tint = Color.White,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(2.dp)
+                        .size(12.dp)
+                )
+            } else if (mType == MediaType.AUDIO) {
+                Icon(
+                    imageVector = Icons.Filled.AudioFile,
+                    contentDescription = "Audio",
+                    tint = Color.White,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(2.dp)
+                        .size(11.dp)
+                )
+            }
+        }
+        return
+    }
+
+    if (gridColumns >= 4) {
+        // Compact 4x..6x Liquid Glass grid card
+        val corner = if (gridColumns >= 5) 12.dp else 16.dp
+        GlassCard(cornerRadius = corner, contentPadding = 5.dp, onClick = onPlay) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(1f)
+                    .clip(RoundedCornerShape((corner.value - 3f).dp))
+            ) {
+                AsyncImage(
+                    model = coverModel,
+                    contentDescription = item.title,
+                    placeholder = painterResource(id = R.drawable.img_album_placeholder),
+                    error = painterResource(id = R.drawable.img_album_placeholder),
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+                ThumbnailDownloadProgressOverlay(
+                    progress = item.progressFraction,
+                    status = item.status,
+                    isIndeterminate = item.status == "DOWNLOADING" && item.fileSizeBytes <= 0L,
+                    modifier = Modifier.fillMaxSize(),
+                    ringSize = if (gridColumns >= 5) 30.dp else 38.dp
+                )
+                if (item.durationMs > 0L && gridColumns == 4) {
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(4.dp)
+                    ) {
+                        Text(
+                            text = FormatUtils.formatDuration(item.durationMs),
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                        )
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = item.title,
+                style = MaterialTheme.typography.labelSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        return
+    }
+
+    // Standard 3x Liquid Glass card with full metadata & options menu
+    GlassCard(cornerRadius = 18.dp, contentPadding = 8.dp, onClick = onPlay) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(1.05f)
+                .clip(RoundedCornerShape(13.dp))
+        ) {
+            AsyncImage(
+                model = coverModel,
+                contentDescription = item.title,
+                placeholder = painterResource(id = R.drawable.img_album_placeholder),
+                error = painterResource(id = R.drawable.img_album_placeholder),
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+            ThumbnailDownloadProgressOverlay(
+                progress = item.progressFraction,
+                status = item.status,
+                isIndeterminate = item.status == "DOWNLOADING" && item.fileSizeBytes <= 0L,
+                modifier = Modifier.fillMaxSize(),
+                ringSize = 42.dp
             )
 
             Surface(
@@ -735,7 +1020,7 @@ private fun LibraryGridCard(
                 color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
                 modifier = Modifier
                     .align(Alignment.TopStart)
-                    .padding(6.dp)
+                    .padding(5.dp)
             ) {
                 Icon(
                     imageVector = when (mType) {
@@ -746,23 +1031,23 @@ private fun LibraryGridCard(
                     contentDescription = item.mediaType,
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier
-                        .padding(5.dp)
-                        .size(14.dp)
+                        .padding(4.dp)
+                        .size(12.dp)
                 )
             }
 
             if (item.durationMs > 0L) {
                 Surface(
-                    shape = RoundedCornerShape(8.dp),
+                    shape = RoundedCornerShape(7.dp),
                     color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
                     modifier = Modifier
                         .align(Alignment.BottomStart)
-                        .padding(6.dp)
+                        .padding(5.dp)
                 ) {
                     Text(
                         text = FormatUtils.formatDuration(item.durationMs),
                         style = MaterialTheme.typography.labelSmall,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
                     )
                 }
             }
@@ -770,8 +1055,8 @@ private fun LibraryGridCard(
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(6.dp)
-                    .size(32.dp)
+                    .padding(5.dp)
+                    .size(26.dp)
                     .clip(CircleShape)
                     .background(
                         Brush.linearGradient(
@@ -784,12 +1069,12 @@ private fun LibraryGridCard(
                     imageVector = if (mType == MediaType.IMAGE) Icons.Filled.Visibility else Icons.Filled.PlayArrow,
                     contentDescription = if (mType == MediaType.IMAGE) "View Photo" else "Play",
                     tint = MaterialTheme.colorScheme.onPrimary,
-                    modifier = Modifier.size(18.dp)
+                    modifier = Modifier.size(15.dp)
                 )
             }
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(6.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
@@ -797,12 +1082,12 @@ private fun LibraryGridCard(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = item.title,
-                    style = MaterialTheme.typography.labelLarge,
+                    style = MaterialTheme.typography.labelMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = "${item.author ?: item.folderCategory} • ${FormatUtils.formatBytes(item.fileSizeBytes)}",
+                    text = FormatUtils.formatBytes(item.fileSizeBytes),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
@@ -812,9 +1097,9 @@ private fun LibraryGridCard(
             Box {
                 IconButton(
                     onClick = { menuOpen = true },
-                    modifier = Modifier.size(36.dp)
+                    modifier = Modifier.size(28.dp)
                 ) {
-                    Icon(Icons.Filled.MoreVert, contentDescription = "Options", modifier = Modifier.size(18.dp))
+                    Icon(Icons.Filled.MoreVert, contentDescription = "Options", modifier = Modifier.size(16.dp))
                 }
                 MediaItemMenu(
                     expanded = menuOpen,

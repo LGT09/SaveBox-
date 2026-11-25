@@ -10,6 +10,7 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -23,6 +24,8 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Surface
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Home
@@ -302,23 +305,38 @@ private fun SaveBoxMainApp(viewModel: MainViewModel) {
                                     )
                                 }
                                 if (!useRail) {
-                                    NavigationBar(
-                                        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.86f),
-                                        windowInsets = WindowInsets.navigationBars
+                                    Surface(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .windowInsetsPadding(WindowInsets.navigationBars)
+                                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                                        shape = RoundedCornerShape(30.dp),
+                                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+                                        tonalElevation = 8.dp,
+                                        shadowElevation = 12.dp,
+                                        border = BorderStroke(
+                                            1.dp,
+                                            Color.White.copy(alpha = 0.18f)
+                                        )
                                     ) {
-                                        TopTabs.forEach { tab ->
-                                            val selected = backStackEntry?.destination?.hasRoute(tab.route::class) == true
-                                            NavigationBarItem(
-                                                selected = selected,
-                                                onClick = { navigateToTab(tab.route) },
-                                                icon = {
-                                                    Icon(
-                                                        imageVector = if (selected) tab.selectedIcon else tab.unselectedIcon,
-                                                        contentDescription = tab.label
-                                                    )
-                                                },
-                                                label = { Text(tab.label, maxLines = 1) }
-                                            )
+                                        NavigationBar(
+                                            containerColor = Color.Transparent,
+                                            windowInsets = WindowInsets(0, 0, 0, 0)
+                                        ) {
+                                            TopTabs.forEach { tab ->
+                                                val selected = backStackEntry?.destination?.hasRoute(tab.route::class) == true
+                                                NavigationBarItem(
+                                                    selected = selected,
+                                                    onClick = { navigateToTab(tab.route) },
+                                                    icon = {
+                                                        Icon(
+                                                            imageVector = if (selected) tab.selectedIcon else tab.unselectedIcon,
+                                                            contentDescription = tab.label
+                                                        )
+                                                    },
+                                                    label = { Text(tab.label, maxLines = 1) }
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -446,6 +464,9 @@ private fun SaveBoxMainApp(viewModel: MainViewModel) {
                                         playlist = videoList.ifEmpty { listOf(target) },
                                         autoResumePosition = settings.autoResumePlayback,
                                         defaultSpeed = settings.defaultPlaybackSpeed,
+                                        defaultRepeatMode = settings.defaultRepeatMode,
+                                        defaultAutoPlayNext = settings.autoPlayNext,
+                                        defaultSeekStepSec = settings.defaultSeekStepSec,
                                         visualizerStyle = settings.visualizerStyle,
                                         onBack = { navController.popBackStack() }
                                     )

@@ -57,9 +57,12 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
 import com.traxxiontech.savebox.R
 import com.traxxiontech.savebox.model.VisualizerStyle
+import com.traxxiontech.savebox.ui.theme.LocalSaveBoxBackgroundConfig
 import com.traxxiontech.savebox.ui.theme.LocalSaveBoxGlassTokens
+import java.io.File
 import java.util.Locale
 import kotlin.math.PI
 import kotlin.math.cos
@@ -99,6 +102,7 @@ fun AnimatedAuroraBackdrop(
     content: @Composable BoxScope.() -> Unit
 ) {
     val tokens = LocalSaveBoxGlassTokens.current
+    val bgConfig = LocalSaveBoxBackgroundConfig.current
     val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val infiniteTransition = rememberInfiniteTransition(label = "aurora")
     val phase by infiniteTransition.animateFloat(
@@ -124,7 +128,26 @@ fun AnimatedAuroraBackdrop(
                 )
             )
     ) {
-        if (isDark) {
+        if (bgConfig.hasActiveImage) {
+            AsyncImage(
+                model = File(bgConfig.imagePath!!),
+                contentDescription = "Custom App Background",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                tokens.backdropGradientTop.copy(alpha = bgConfig.overlayDim),
+                                tokens.backdropGradientBottom.copy(alpha = (bgConfig.overlayDim + 0.14f).coerceAtMost(0.92f))
+                            )
+                        )
+                    )
+            )
+        } else if (isDark) {
             Image(
                 painter = painterResource(id = R.drawable.img_hero_banner),
                 contentDescription = null,
@@ -201,23 +224,28 @@ fun GlassCard(
     content: @Composable ColumnScope.() -> Unit
 ) {
     val tokens = LocalSaveBoxGlassTokens.current
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
-        targetValue = if (isPressed && onClick != null) 0.975f else 1f,
-        animationSpec = spring(dampingRatio = 0.72f, stiffness = 500f),
+        targetValue = if (isPressed && onClick != null) 0.972f else 1f,
+        animationSpec = spring(dampingRatio = 0.70f, stiffness = 480f),
         label = "glass_press_scale"
     )
 
     val shape = RoundedCornerShape(cornerRadius)
-    val glassSurfaceBrush = Brush.linearGradient(
-        colors = listOf(tokens.glassStart, tokens.glassEnd)
+    val glassSurfaceBrush = Brush.verticalGradient(
+        colors = listOf(
+            Color.White.copy(alpha = if (isDark) 0.08f else 0.28f),
+            tokens.glassStart,
+            tokens.glassEnd
+        )
     )
     val borderBrush = Brush.linearGradient(
         colors = listOf(
             tokens.borderHighlight,
             tokens.borderFade,
-            tokens.glowSecondary.copy(alpha = 0.16f)
+            tokens.glowPrimary.copy(alpha = 0.24f)
         )
     )
 
@@ -237,7 +265,7 @@ fun GlassCard(
                 }
             ),
         shape = shape,
-        color = tokens.glassEnd.copy(alpha = 0.52f),
+        color = tokens.glassEnd.copy(alpha = 0.45f),
         tonalElevation = tonalElevation,
         shadowElevation = shadowElevation,
         border = BorderStroke(1.dp, borderBrush)

@@ -17,12 +17,15 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import com.traxxiontech.savebox.model.AppThemeMode
 import com.traxxiontech.savebox.model.AppThemePalette
+import com.traxxiontech.savebox.model.BackgroundColorBlendMode
+import java.io.File
 
 @Immutable
 data class SaveBoxGlassTokens(
@@ -36,12 +39,21 @@ data class SaveBoxGlassTokens(
     val backdropGradientBottom: Color
 )
 
+@Immutable
+data class SaveBoxBackgroundConfig(
+    val imagePath: String? = null,
+    val overlayDim: Float = 0.42f
+) {
+    val hasActiveImage: Boolean
+        get() = !imagePath.isNullOrBlank() && File(imagePath).exists()
+}
+
 val LocalSaveBoxGlassTokens = staticCompositionLocalOf {
     SaveBoxGlassTokens(
-        glassStart = Color(0x9E0E141F),
-        glassEnd = Color(0x8C080C13),
-        borderHighlight = GlassBorderLight,
-        borderFade = GlassBorderDark,
+        glassStart = Color(0x88151D2B),
+        glassEnd = Color(0x660B1019),
+        borderHighlight = Color(0x36FFFFFF),
+        borderFade = Color(0x14FFFFFF),
         glowPrimary = ElectricCyan,
         glowSecondary = AuroraViolet,
         backdropGradientTop = ObsidianNight,
@@ -49,120 +61,124 @@ val LocalSaveBoxGlassTokens = staticCompositionLocalOf {
     )
 }
 
+val LocalSaveBoxBackgroundConfig = staticCompositionLocalOf {
+    SaveBoxBackgroundConfig()
+}
+
 private fun darkSchemeFor(palette: AppThemePalette): ColorScheme = when (palette) {
     AppThemePalette.OBSIDIAN_CYAN -> darkColorScheme(
-        primary = ElectricCyan,
-        onPrimary = DimTextPrimary,
+        primary = Color(0xFF4C7AA8),
+        onPrimary = Color(0xFFEAF1FA),
         primaryContainer = ElectricCyanDim,
-        onPrimaryContainer = Color(0xFF8CA2BC),
-        secondary = AuroraViolet,
-        onSecondary = DimTextPrimary,
-        secondaryContainer = Color(0xFF131922),
-        onSecondaryContainer = Color(0xFF8D99AB),
-        tertiary = EmeraldMint,
-        onTertiary = DimTextPrimary,
+        onPrimaryContainer = Color(0xFFA7C0DB),
+        secondary = Color(0xFF56677E),
+        onSecondary = Color(0xFFEAF1FA),
+        secondaryContainer = Color(0xFF151C27),
+        onSecondaryContainer = Color(0xFFA3B1C6),
+        tertiary = Color(0xFF3E7855),
+        onTertiary = Color(0xFFEAF5EE),
         background = ObsidianNight,
-        onBackground = DimTextPrimary,
+        onBackground = Color(0xFFD5DFEC),
         surface = ObsidianSurface,
-        onSurface = DimTextPrimary,
+        onSurface = Color(0xFFD5DFEC),
         surfaceVariant = ObsidianElevated,
-        onSurfaceVariant = DimTextSecondary,
-        outline = Color(0xFF1D2636),
-        outlineVariant = Color(0xFF131A26),
+        onSurfaceVariant = Color(0xFF8B99AF),
+        outline = Color(0xFF283448),
+        outlineVariant = Color(0xFF18202E),
         error = CoralAlert,
-        onError = DimTextPrimary
+        onError = Color(0xFFFCE8E8)
     )
 
     AppThemePalette.AURORA_VIOLET -> darkColorScheme(
-        primary = AuroraVioletSoft,
-        onPrimary = DimTextPrimary,
-        primaryContainer = Color(0xFF181529),
-        onPrimaryContainer = Color(0xFF9992B5),
-        secondary = MagentaGlow,
-        onSecondary = DimTextPrimary,
-        secondaryContainer = Color(0xFF1C142B),
-        onSecondaryContainer = Color(0xFFA292BD),
-        tertiary = ElectricCyan,
-        onTertiary = DimTextPrimary,
+        primary = Color(0xFF6B669E),
+        onPrimary = Color(0xFFF0EEFA),
+        primaryContainer = Color(0xFF1E1A36),
+        onPrimaryContainer = Color(0xFFBBB6DC),
+        secondary = Color(0xFF7B5EA3),
+        onSecondary = Color(0xFFF0EEFA),
+        secondaryContainer = Color(0xFF221836),
+        onSecondaryContainer = Color(0xFFC4B6DE),
+        tertiary = Color(0xFF4C7AA8),
+        onTertiary = Color(0xFFEAF1FA),
         background = VioletNight,
-        onBackground = DimTextPrimary,
+        onBackground = Color(0xFFD9D6EB),
         surface = VioletSurface,
-        onSurface = DimTextPrimary,
-        surfaceVariant = Color(0xFF141428),
-        onSurfaceVariant = DimTextSecondary,
-        outline = Color(0xFF252040),
-        outlineVariant = Color(0xFF19162B),
+        onSurface = Color(0xFFD9D6EB),
+        surfaceVariant = Color(0xFF181832),
+        onSurfaceVariant = Color(0xFF9691B5),
+        outline = Color(0xFF312B52),
+        outlineVariant = Color(0xFF1E1A36),
         error = CoralAlert,
-        onError = DimTextPrimary
+        onError = Color(0xFFFCE8E8)
     )
 
     AppThemePalette.EMERALD_NEON -> darkColorScheme(
-        primary = EmeraldMint,
-        onPrimary = DimTextPrimary,
-        primaryContainer = Color(0xFF0C2217),
-        onPrimaryContainer = Color(0xFF83AB92),
-        secondary = TealSpark,
-        onSecondary = DimTextPrimary,
-        secondaryContainer = Color(0xFF0A1D1B),
-        onSecondaryContainer = Color(0xFF7FA8A2),
-        tertiary = ElectricCyan,
-        onTertiary = DimTextPrimary,
+        primary = Color(0xFF3D7D59),
+        onPrimary = Color(0xFFE9F7EF),
+        primaryContainer = Color(0xFF0E291C),
+        onPrimaryContainer = Color(0xFF9ED1B4),
+        secondary = Color(0xFF35736A),
+        onSecondary = Color(0xFFE9F7F4),
+        secondaryContainer = Color(0xFF0C2420),
+        onSecondaryContainer = Color(0xFF98CEC5),
+        tertiary = Color(0xFF4C7AA8),
+        onTertiary = Color(0xFFEAF1FA),
         background = EmeraldBg,
-        onBackground = DimTextPrimary,
+        onBackground = Color(0xFFD2E5DA),
         surface = EmeraldSurface,
-        onSurface = DimTextPrimary,
-        surfaceVariant = Color(0xFF0D201A),
-        onSurfaceVariant = DimTextSecondary,
-        outline = Color(0xFF173329),
-        outlineVariant = Color(0xFF0F241D),
+        onSurface = Color(0xFFD2E5DA),
+        surfaceVariant = Color(0xFF102820),
+        onSurfaceVariant = Color(0xFF84A895),
+        outline = Color(0xFF1F4235),
+        outlineVariant = Color(0xFF132C23),
         error = CoralAlert,
-        onError = DimTextPrimary
+        onError = Color(0xFFFCE8E8)
     )
 
     AppThemePalette.MIDNIGHT_ROSE -> darkColorScheme(
-        primary = RoseNeon,
-        onPrimary = DimTextPrimary,
-        primaryContainer = Color(0xFF241320),
-        onPrimaryContainer = Color(0xFFA8899F),
-        secondary = AuroraVioletSoft,
-        onSecondary = DimTextPrimary,
-        secondaryContainer = Color(0xFF1B1226),
-        onSecondaryContainer = Color(0xFF9C8EAD),
-        tertiary = ElectricCyan,
-        onTertiary = DimTextPrimary,
+        primary = Color(0xFF8C5377),
+        onPrimary = Color(0xFFFAEFF5),
+        primaryContainer = Color(0xFF2D1727),
+        onPrimaryContainer = Color(0xFFD9AFC7),
+        secondary = Color(0xFF70588A),
+        onSecondary = Color(0xFFF4EFFA),
+        secondaryContainer = Color(0xFF221630),
+        onSecondaryContainer = Color(0xFFC1B0D6),
+        tertiary = Color(0xFF4C7AA8),
+        onTertiary = Color(0xFFEAF1FA),
         background = RoseDeepBg,
-        onBackground = DimTextPrimary,
+        onBackground = Color(0xFFE6D8E0),
         surface = RoseSurface,
-        onSurface = DimTextPrimary,
-        surfaceVariant = Color(0xFF191020),
-        onSurfaceVariant = DimTextSecondary,
-        outline = Color(0xFF2F1D36),
-        outlineVariant = Color(0xFF211326),
+        onSurface = Color(0xFFE6D8E0),
+        surfaceVariant = Color(0xFF201329),
+        onSurfaceVariant = Color(0xFFA88E9E),
+        outline = Color(0xFF3D2647),
+        outlineVariant = Color(0xFF291830),
         error = CoralAlert,
-        onError = DimTextPrimary
+        onError = Color(0xFFFCE8E8)
     )
 
     AppThemePalette.SOLAR_AMBER -> darkColorScheme(
-        primary = AmberPulse,
-        onPrimary = DimTextPrimary,
-        primaryContainer = Color(0xFF261A0E),
-        onPrimaryContainer = Color(0xFFA8947C),
-        secondary = CoralFlame,
-        onSecondary = DimTextPrimary,
-        secondaryContainer = Color(0xFF26160D),
-        onSecondaryContainer = Color(0xFFA88E7B),
-        tertiary = ElectricCyan,
-        onTertiary = DimTextPrimary,
+        primary = Color(0xFF94693C),
+        onPrimary = Color(0xFFFAF3EB),
+        primaryContainer = Color(0xFF2E1F10),
+        onPrimaryContainer = Color(0xFFD9BEA2),
+        secondary = Color(0xFF855331),
+        onSecondary = Color(0xFFFAF1EB),
+        secondaryContainer = Color(0xFF2C190F),
+        onSecondaryContainer = Color(0xFFD6B5A1),
+        tertiary = Color(0xFF4C7AA8),
+        onTertiary = Color(0xFFEAF1FA),
         background = SolarNight,
-        onBackground = DimTextPrimary,
+        onBackground = Color(0xFFE6DDD2),
         surface = SolarSurface,
-        onSurface = DimTextPrimary,
-        surfaceVariant = Color(0xFF1E160E),
-        onSurfaceVariant = DimTextSecondary,
-        outline = Color(0xFF332518),
-        outlineVariant = Color(0xFF241A10),
+        onSurface = Color(0xFFE6DDD2),
+        surfaceVariant = Color(0xFF241A10),
+        onSurfaceVariant = Color(0xFFA89682),
+        outline = Color(0xFF42301F),
+        outlineVariant = Color(0xFF2C2014),
         error = CoralAlert,
-        onError = DimTextPrimary
+        onError = Color(0xFFFCE8E8)
     )
 }
 
@@ -259,17 +275,79 @@ private fun lightSchemeFor(palette: AppThemePalette): ColorScheme = when (palett
     )
 }
 
+private fun imageMatchedScheme(
+    primary: Color,
+    secondary: Color,
+    surface: Color,
+    background: Color,
+    darkTheme: Boolean
+): ColorScheme {
+    return if (darkTheme) {
+        val textInk = lerp(Color(0xFFE8EEF5), primary, 0.14f)
+        val mutedInk = lerp(Color(0xFF9BA8B8), primary, 0.18f)
+        darkColorScheme(
+            primary = primary,
+            onPrimary = Color(0xFFF5F8FC),
+            primaryContainer = lerp(background, primary, 0.28f),
+            onPrimaryContainer = textInk,
+            secondary = secondary,
+            onSecondary = Color(0xFFF5F8FC),
+            secondaryContainer = lerp(surface, secondary, 0.25f),
+            onSecondaryContainer = textInk,
+            tertiary = lerp(primary, secondary, 0.5f),
+            onTertiary = Color(0xFFF5F8FC),
+            background = background,
+            onBackground = textInk,
+            surface = surface,
+            onSurface = textInk,
+            surfaceVariant = lerp(surface, primary, 0.14f),
+            onSurfaceVariant = mutedInk,
+            outline = lerp(surface, Color.White, 0.18f),
+            outlineVariant = lerp(surface, Color.White, 0.10f),
+            error = CoralAlert,
+            onError = Color(0xFFFCE8E8)
+        )
+    } else {
+        val lightBg = lerp(Color(0xFFF4F6FA), primary, 0.08f)
+        val lightSurf = lerp(Color(0xFFFFFFFF), secondary, 0.06f)
+        val lightSurfVar = lerp(Color(0xFFE7ECF3), primary, 0.12f)
+        val darkInk = lerp(Color(0xFF141B24), primary, 0.18f)
+        lightColorScheme(
+            primary = lerp(primary, Color.Black, 0.24f),
+            onPrimary = Color.White,
+            primaryContainer = lerp(Color.White, primary, 0.22f),
+            onPrimaryContainer = darkInk,
+            secondary = lerp(secondary, Color.Black, 0.22f),
+            onSecondary = Color.White,
+            secondaryContainer = lerp(Color.White, secondary, 0.18f),
+            onSecondaryContainer = darkInk,
+            tertiary = primary,
+            onTertiary = Color.White,
+            background = lightBg,
+            onBackground = darkInk,
+            surface = lightSurf,
+            onSurface = darkInk,
+            surfaceVariant = lightSurfVar,
+            onSurfaceVariant = lerp(darkInk, Color.White, 0.35f),
+            outline = lerp(lightSurfVar, Color.Black, 0.18f),
+            outlineVariant = lightSurfVar
+        )
+    }
+}
+
 private fun glassTokensFor(
-    palette: AppThemePalette,
     darkTheme: Boolean,
-    scheme: ColorScheme
+    scheme: ColorScheme,
+    hasWallpaperImage: Boolean
 ): SaveBoxGlassTokens {
     return if (darkTheme) {
+        val cardTopAlpha = if (hasWallpaperImage) 0.46f else 0.62f
+        val cardBottomAlpha = if (hasWallpaperImage) 0.34f else 0.52f
         SaveBoxGlassTokens(
-            glassStart = scheme.surfaceVariant.copy(alpha = 0.64f),
-            glassEnd = scheme.surface.copy(alpha = 0.56f),
-            borderHighlight = Color.White.copy(alpha = 0.08f),
-            borderFade = scheme.primary.copy(alpha = 0.14f),
+            glassStart = lerp(scheme.surfaceVariant, Color.White, 0.08f).copy(alpha = cardTopAlpha),
+            glassEnd = scheme.surface.copy(alpha = cardBottomAlpha),
+            borderHighlight = Color.White.copy(alpha = if (hasWallpaperImage) 0.28f else 0.20f),
+            borderFade = scheme.primary.copy(alpha = 0.20f),
             glowPrimary = scheme.primary,
             glowSecondary = scheme.secondary,
             backdropGradientTop = scheme.background,
@@ -277,10 +355,10 @@ private fun glassTokensFor(
         )
     } else {
         SaveBoxGlassTokens(
-            glassStart = Color.White.copy(alpha = 0.82f),
-            glassEnd = scheme.surfaceVariant.copy(alpha = 0.72f),
-            borderHighlight = Color.White.copy(alpha = 0.75f),
-            borderFade = scheme.primary.copy(alpha = 0.18f),
+            glassStart = Color.White.copy(alpha = if (hasWallpaperImage) 0.64f else 0.80f),
+            glassEnd = scheme.surfaceVariant.copy(alpha = if (hasWallpaperImage) 0.48f else 0.68f),
+            borderHighlight = Color.White.copy(alpha = 0.85f),
+            borderFade = scheme.primary.copy(alpha = 0.22f),
             glowPrimary = scheme.primary,
             glowSecondary = scheme.secondary,
             backdropGradientTop = scheme.background,
@@ -290,10 +368,10 @@ private fun glassTokensFor(
 }
 
 val SaveBoxShapes = Shapes(
-    small = RoundedCornerShape(14.dp),
-    medium = RoundedCornerShape(20.dp),
-    large = RoundedCornerShape(24.dp),
-    extraLarge = RoundedCornerShape(28.dp)
+    small = RoundedCornerShape(16.dp),
+    medium = RoundedCornerShape(22.dp),
+    large = RoundedCornerShape(28.dp),
+    extraLarge = RoundedCornerShape(34.dp)
 )
 
 @Composable
@@ -301,6 +379,13 @@ fun SaveBoxTheme(
     themeMode: AppThemeMode = AppThemeMode.DARK,
     themePalette: AppThemePalette = AppThemePalette.OBSIDIAN_CYAN,
     dynamicColor: Boolean = false,
+    backgroundImagePath: String? = null,
+    backgroundColorBlendMode: BackgroundColorBlendMode = BackgroundColorBlendMode.AUTO_FROM_IMAGE,
+    backgroundOverlayDim: Float = 0.42f,
+    extractedPrimaryArgb: Long? = null,
+    extractedSecondaryArgb: Long? = null,
+    extractedSurfaceArgb: Long? = null,
+    extractedBackgroundArgb: Long? = null,
     content: @Composable () -> Unit
 ) {
     val darkTheme = when (themeMode) {
@@ -309,7 +394,27 @@ fun SaveBoxTheme(
         AppThemeMode.LIGHT -> false
     }
 
+    val bgConfig = SaveBoxBackgroundConfig(
+        imagePath = backgroundImagePath,
+        overlayDim = backgroundOverlayDim
+    )
+    val useImageMatchedColors = bgConfig.hasActiveImage &&
+        backgroundColorBlendMode == BackgroundColorBlendMode.AUTO_FROM_IMAGE &&
+        extractedPrimaryArgb != null &&
+        extractedSecondaryArgb != null &&
+        extractedSurfaceArgb != null &&
+        extractedBackgroundArgb != null
+
     val colorScheme = when {
+        useImageMatchedColors -> {
+            imageMatchedScheme(
+                primary = Color(extractedPrimaryArgb!!.toInt()),
+                secondary = Color(extractedSecondaryArgb!!.toInt()),
+                surface = Color(extractedSurfaceArgb!!.toInt()),
+                background = Color(extractedBackgroundArgb!!.toInt()),
+                darkTheme = darkTheme
+            )
+        }
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val context = LocalContext.current
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
@@ -318,7 +423,7 @@ fun SaveBoxTheme(
         else -> lightSchemeFor(themePalette)
     }
 
-    val glassTokens = glassTokensFor(themePalette, darkTheme, colorScheme)
+    val glassTokens = glassTokensFor(darkTheme, colorScheme, bgConfig.hasActiveImage)
 
     val view = LocalView.current
     if (!view.isInEditMode) {
@@ -331,7 +436,10 @@ fun SaveBoxTheme(
         }
     }
 
-    CompositionLocalProvider(LocalSaveBoxGlassTokens provides glassTokens) {
+    CompositionLocalProvider(
+        LocalSaveBoxGlassTokens provides glassTokens,
+        LocalSaveBoxBackgroundConfig provides bgConfig
+    ) {
         MaterialTheme(
             colorScheme = colorScheme,
             typography = SaveBoxTypography,

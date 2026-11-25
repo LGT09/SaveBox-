@@ -225,13 +225,25 @@ class MediaControllerManager(
         controller.shuffleModeEnabled = !controller.shuffleModeEnabled
     }
 
+    fun setRepeatMode(mode: com.traxxiontech.savebox.model.RepeatPlaybackMode) {
+        val exoMode = when (mode) {
+            com.traxxiontech.savebox.model.RepeatPlaybackMode.OFF -> Player.REPEAT_MODE_OFF
+            com.traxxiontech.savebox.model.RepeatPlaybackMode.REPEAT_ONE -> Player.REPEAT_MODE_ONE
+            com.traxxiontech.savebox.model.RepeatPlaybackMode.REPEAT_ALL -> Player.REPEAT_MODE_ALL
+        }
+        mediaController?.repeatMode = exoMode
+        _state.value = _state.value.copy(repeatMode = exoMode)
+    }
+
     fun cycleRepeatMode() {
         val controller = mediaController ?: return
-        controller.repeatMode = when (controller.repeatMode) {
-            Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
-            Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
+        val nextMode = when (controller.repeatMode) {
+            Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ONE
+            Player.REPEAT_MODE_ONE -> Player.REPEAT_MODE_ALL
             else -> Player.REPEAT_MODE_OFF
         }
+        controller.repeatMode = nextMode
+        _state.value = _state.value.copy(repeatMode = nextMode)
     }
 
     fun setPlaybackSpeed(speed: Float) {

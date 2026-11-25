@@ -15,6 +15,8 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import com.traxxiontech.savebox.data.download.DownloadRepository
 import com.traxxiontech.savebox.data.local.DownloadEntity
+import com.traxxiontech.savebox.model.RepeatPlaybackMode
+import com.traxxiontech.savebox.player.SleepTimerOption
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Job
@@ -39,6 +41,12 @@ data class MediaPlayerUiState(
     val playbackSpeed: Float = 1.0f,
     val resizeModeIndex: Int = 0,
     val isMuted: Boolean = false,
+    val repeatMode: RepeatPlaybackMode = RepeatPlaybackMode.OFF,
+    val autoPlayNext: Boolean = true,
+    val seekStepSec: Int = 10,
+    val selectedSleepOption: SleepTimerOption = SleepTimerOption.OFF,
+    val sleepTimerRemainingSec: Long = 0L,
+    val sleepAtEndOfVideo: Boolean = false,
     val errorMessage: String? = null
 )
 
@@ -61,6 +69,7 @@ class MediaPlayerViewModel @Inject constructor(
     val uiState: StateFlow<MediaPlayerUiState> = _uiState.asStateFlow()
 
     private var tickerJob: Job? = null
+    private var sleepTimerJob: Job? = null
     private var loadedMediaId: Long = -1L
     private var loadedSubtitleUri: Uri? = null
 
@@ -75,7 +84,39 @@ class MediaPlayerViewModel @Inject constructor(
                 _uiState.update { it.copy(durationMs = dur) }
             }
             if (playbackState == Player.STATE_ENDED) {
-                skipNext()
+                val state = _uiState.value
+                if (state.sleepAtEndOfVideo) {
+                    player.pause()
+                    _uiState.update {
+                        it.copy(
+                            sleepAtEndOfVideo = false,
+                            selectedSleepOption = SleepTimerOption.OFF,
+                            sleepTimerRemainingSec = 0L
+                        )
+                    }
+                    return
+                }
+                when (state.repeatMode) {
+                    RepeatPlaybackMode.REPEAT_ONE -> {
+                        // ExoPlayer handles REPEAT_MODE_ONE natively, fallback safe seek
+                        player.seekTo(0L)
+                        player.play()
+                    }
+                    RepeatPlaybackMode.REPEAT_ALL -> {
+                        if (state.currentIndex < state.playlist.lastIndex) {
+                            skipNext()
+                        } else if (state.playlist.isNotEmpty()) {
+                            playAtIndex(0)
+                        }
+                    }
+                    RepeatPlaybackMode.OFF -> {
+                        if (state.autoPlayNext && state.currentIndex < state.playlist.lastIndex) {
+                            skipNext()
+                        } else {
+                            persistPosition()
+                        }
+                    }
+                }
             }
         }
 
@@ -114,12 +155,16 @@ class MediaPlayerViewModel @Inject constructor(
         playlist: List<DownloadEntity>,
         autoResume: Boolean,
         defaultSpeed: Float,
+        defaultRepeatMode: RepeatPlaybackMode = RepeatPlaybackMode.OFF,
+        defaultAutoPlayNext: Boolean = true,
+        defaultSeekStepSec: Int = 10,
         subtitleUri: Uri? = null
     ) {
         val list = playlist.ifEmpty { listOf(target) }
         val index = list.indexOfFirst { it.id == target.id }.coerceAtLeast(0)
         if (loadedMediaId == target.id && loadedSubtitleUri == subtitleUri) return
 
+        val isInitialLoad = loadedMediaId == -1L
         loadedMediaId = target.id
         loadedSubtitleUri = subtitleUri
 
@@ -140,6 +185,9 @@ class MediaPlayerViewModel @Inject constructor(
             builder.setSubtitleConfigurations(listOf(subConfig))
         }
 
+        val activeRepeat = if (isInitialLoad) defaultRepeatMode else _uiState.value.repeatMode
+        applyExoRepeatMode(activeRepeat)
+
         player.setMediaItem(builder.build())
         player.setPlaybackSpeed(defaultSpeed)
         if (autoResume && target.playbackPositionMs > 0L) {
@@ -156,6 +204,9 @@ class MediaPlayerViewModel @Inject constructor(
                 positionMs = if (autoResume) target.playbackPositionMs else 0L,
                 durationMs = target.durationMs,
                 playbackSpeed = defaultSpeed,
+                repeatMode = activeRepeat,
+                autoPlayNext = if (isInitialLoad) defaultAutoPlayNext else it.autoPlayNext,
+                seekStepSec = if (isInitialLoad) defaultSeekStepSec else it.seekStepSec,
                 errorMessage = null
             )
         }
@@ -163,6 +214,22 @@ class MediaPlayerViewModel @Inject constructor(
         viewModelScope.launch {
             downloadRepository.updatePlaybackPosition(target.id, target.playbackPositionMs, true)
         }
+    }
+
+    private fun playAtIndex(index: Int) {
+        val state = _uiState.value
+        val target = state.playlist.getOrNull(index) ?: return
+        persistPosition()
+        loadedMediaId = -1L
+        loadMedia(
+            target = target,
+            playlist = state.playlist,
+            autoResume = false,
+            defaultSpeed = state.playbackSpeed,
+            defaultRepeatMode = state.repeatMode,
+            defaultAutoPlayNext = state.autoPlayNext,
+            defaultSeekStepSec = state.seekStepSec
+        )
     }
 
     fun togglePlayPause() {
@@ -187,29 +254,113 @@ class MediaPlayerViewModel @Inject constructor(
     fun skipNext() {
         val state = _uiState.value
         if (state.currentIndex < state.playlist.lastIndex) {
-            persistPosition()
-            val next = state.playlist[state.currentIndex + 1]
-            loadedMediaId = -1L
-            loadMedia(next, state.playlist, autoResume = false, defaultSpeed = state.playbackSpeed)
+            playAtIndex(state.currentIndex + 1)
+        } else if (state.repeatMode == RepeatPlaybackMode.REPEAT_ALL && state.playlist.isNotEmpty()) {
+            playAtIndex(0)
         }
     }
 
     fun skipPrevious() {
         val state = _uiState.value
         if (state.currentIndex > 0) {
-            persistPosition()
-            val prev = state.playlist[state.currentIndex - 1]
-            loadedMediaId = -1L
-            loadMedia(prev, state.playlist, autoResume = false, defaultSpeed = state.playbackSpeed)
+            playAtIndex(state.currentIndex - 1)
+        } else if (state.repeatMode == RepeatPlaybackMode.REPEAT_ALL && state.playlist.isNotEmpty()) {
+            playAtIndex(state.playlist.lastIndex)
         }
     }
 
+    fun setSpeed(speed: Float) {
+        player.setPlaybackSpeed(speed)
+        _uiState.update { it.copy(playbackSpeed = speed) }
+    }
+
     fun cycleSpeed() {
-        val speeds = listOf(0.5f, 1.0f, 1.25f, 1.5f, 2.0f)
+        val speeds = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
         val cur = _uiState.value.playbackSpeed
         val next = speeds[(speeds.indexOfFirst { it == cur } + 1) % speeds.size]
-        player.setPlaybackSpeed(next)
-        _uiState.update { it.copy(playbackSpeed = next) }
+        setSpeed(next)
+    }
+
+    fun setRepeatMode(mode: RepeatPlaybackMode) {
+        applyExoRepeatMode(mode)
+        _uiState.update { it.copy(repeatMode = mode) }
+    }
+
+    fun cycleRepeatMode(): RepeatPlaybackMode {
+        val next = when (_uiState.value.repeatMode) {
+            RepeatPlaybackMode.OFF -> RepeatPlaybackMode.REPEAT_ONE
+            RepeatPlaybackMode.REPEAT_ONE -> RepeatPlaybackMode.REPEAT_ALL
+            RepeatPlaybackMode.REPEAT_ALL -> RepeatPlaybackMode.OFF
+        }
+        setRepeatMode(next)
+        return next
+    }
+
+    private fun applyExoRepeatMode(mode: RepeatPlaybackMode) {
+        player.repeatMode = when (mode) {
+            RepeatPlaybackMode.OFF -> Player.REPEAT_MODE_OFF
+            RepeatPlaybackMode.REPEAT_ONE -> Player.REPEAT_MODE_ONE
+            RepeatPlaybackMode.REPEAT_ALL -> Player.REPEAT_MODE_OFF // Handled across playlist index in STATE_ENDED
+        }
+    }
+
+    fun setAutoPlayNext(enabled: Boolean) {
+        _uiState.update { it.copy(autoPlayNext = enabled) }
+    }
+
+    fun setSeekStepSec(seconds: Int) {
+        _uiState.update { it.copy(seekStepSec = seconds.coerceIn(5, 60)) }
+    }
+
+    fun setSleepTimer(option: SleepTimerOption) {
+        sleepTimerJob?.cancel()
+        if (option == SleepTimerOption.OFF) {
+            _uiState.update {
+                it.copy(
+                    selectedSleepOption = SleepTimerOption.OFF,
+                    sleepTimerRemainingSec = 0L,
+                    sleepAtEndOfVideo = false
+                )
+            }
+            return
+        }
+        var remaining = option.minutes * 60L
+        _uiState.update {
+            it.copy(
+                selectedSleepOption = option,
+                sleepTimerRemainingSec = remaining,
+                sleepAtEndOfVideo = false
+            )
+        }
+        sleepTimerJob = viewModelScope.launch {
+            while (remaining > 0L && isActive) {
+                delay(1000L)
+                remaining--
+                _uiState.update { it.copy(sleepTimerRemainingSec = remaining) }
+            }
+            if (remaining <= 0L) {
+                player.pause()
+                persistPosition()
+                _uiState.update {
+                    it.copy(
+                        selectedSleepOption = SleepTimerOption.OFF,
+                        sleepTimerRemainingSec = 0L,
+                        sleepAtEndOfVideo = false
+                    )
+                }
+            }
+        }
+    }
+
+    fun setSleepAtEndOfVideo() {
+        sleepTimerJob?.cancel()
+        _uiState.update {
+            it.copy(
+                selectedSleepOption = SleepTimerOption.OFF,
+                sleepTimerRemainingSec = 0L,
+                sleepAtEndOfVideo = true
+            )
+        }
     }
 
     fun cycleResizeMode() {
@@ -233,11 +384,7 @@ class MediaPlayerViewModel @Inject constructor(
 
     override fun onCleared() {
         tickerJob?.cancel()
-        val item = _uiState.value.currentItem
-        val pos = runCatching { player.currentPosition.coerceAtLeast(0L) }.getOrDefault(0L)
-        if (item != null && pos > 0L) {
-            // Fire-and-forget safe save before clearing scope isn't guaranteed; persistPosition is also called onDispose/onBack
-        }
+        sleepTimerJob?.cancel()
         player.removeListener(playerListener)
         player.release()
         super.onCleared()

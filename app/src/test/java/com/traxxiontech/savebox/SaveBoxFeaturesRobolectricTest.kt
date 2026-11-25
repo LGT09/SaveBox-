@@ -1,6 +1,9 @@
 package com.traxxiontech.savebox
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color as AndroidColor
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -11,9 +14,14 @@ import com.traxxiontech.savebox.data.download.DocumentFileManager
 import com.traxxiontech.savebox.data.download.StorageManager
 import com.traxxiontech.savebox.data.local.FavoriteEntity
 import com.traxxiontech.savebox.data.local.SaveBoxDatabase
+import com.traxxiontech.savebox.data.local.SettingsDataStore
+import com.traxxiontech.savebox.model.BackgroundColorBlendMode
+import com.traxxiontech.savebox.model.RepeatPlaybackMode
 import com.traxxiontech.savebox.ui.components.RewardedDownloadPassDialog
 import com.traxxiontech.savebox.ui.components.SaveBoxAdUnits
 import com.traxxiontech.savebox.ui.components.ThumbnailDownloadProgressOverlay
+import com.traxxiontech.savebox.ui.theme.ExtractedImageTheme
+import com.traxxiontech.savebox.ui.theme.ImageColorExtractor
 import com.traxxiontech.savebox.ui.theme.SaveBoxTheme
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -176,5 +184,63 @@ class SaveBoxFeaturesRobolectricTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("rewarded_download_pass_dialog").assertIsDisplayed()
         composeRule.onNodeWithText("Sponsored Download Pass").assertIsDisplayed()
+    }
+
+    @Test
+    fun imageColorExtractor_extractsOpaqueThemeFromBitmap() {
+        val bmp = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bmp)
+        canvas.drawColor(AndroidColor.rgb(220, 90, 45))
+        val paint = android.graphics.Paint().apply { color = AndroidColor.rgb(35, 160, 145) }
+        canvas.drawRect(0f, 32f, 64f, 64f, paint)
+
+        val extracted = ImageColorExtractor.extractThemeFromBitmap(bmp)
+        bmp.recycle()
+
+        assertTrue((extracted.primaryArgb ushr 24) == 0xFFL)
+        assertTrue((extracted.secondaryArgb ushr 24) == 0xFFL)
+        assertTrue((extracted.surfaceArgb ushr 24) == 0xFFL)
+        assertTrue((extracted.backgroundArgb ushr 24) == 0xFFL)
+    }
+
+    @Test
+    fun settingsDataStore_persistsBackgroundGridColumnsAndRepeatMode() = runBlocking {
+        val store = SettingsDataStore(context)
+        val sampleTheme = ExtractedImageTheme(
+            primaryArgb = 0xFF7A56B4L,
+            secondaryArgb = 0xFF49819EL,
+            surfaceArgb = 0xFF141824L,
+            backgroundArgb = 0xFF0A0D14L
+        )
+        store.setCustomBackground("/data/user/0/com.traxxiontech.savebox/files/backgrounds/bg.jpg", sampleTheme)
+        store.setBackgroundColorBlendMode(BackgroundColorBlendMode.MANUAL_PALETTE)
+        store.setLibraryGridColumns(10)
+        store.setDefaultRepeatMode(RepeatPlaybackMode.REPEAT_ONE)
+        store.setDefaultSeekStepSec(15)
+
+        val loaded = store.settingsFlow.first()
+        assertEquals("/data/user/0/com.traxxiontech.savebox/files/backgrounds/bg.jpg", loaded.backgroundImagePath)
+        assertEquals(BackgroundColorBlendMode.MANUAL_PALETTE, loaded.backgroundColorBlendMode)
+        assertEquals(0xFF7A56B4L, loaded.extractedPrimaryArgb)
+        assertEquals(10, loaded.libraryGridColumns)
+        assertEquals(RepeatPlaybackMode.REPEAT_ONE, loaded.defaultRepeatMode)
+        assertEquals(15, loaded.defaultSeekStepSec)
+
+        store.setLibraryGridColumns(99)
+        assertEquals(10, store.settingsFlow.first().libraryGridColumns)
+        store.setLibraryGridColumns(1)
+        assertEquals(3, store.settingsFlow.first().libraryGridColumns)
+
+        store.clearCustomBackground()
+        val cleared = store.settingsFlow.first()
+        assertNull(cleared.backgroundImagePath)
+        assertNull(cleared.extractedPrimaryArgb)
+    }
+
+    @Test
+    fun repeatPlaybackMode_labelsMatchOnScreenControls() {
+        assertEquals("No Repeat", RepeatPlaybackMode.OFF.label)
+        assertEquals("Repeat ×1", RepeatPlaybackMode.REPEAT_ONE.label)
+        assertEquals("Auto Repeat", RepeatPlaybackMode.REPEAT_ALL.label)
     }
 }

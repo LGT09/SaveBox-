@@ -8,113 +8,110 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import com.traxxiontech.savebox.R
 
-// Stylish Geometric Display & UI Fonts bundled locally via font-util
-val SpaceGroteskFontFamily = FontFamily(
-    Font(R.font.space_grotesk, FontWeight.Normal),
-    Font(R.font.space_grotesk, FontWeight.Medium),
-    Font(R.font.space_grotesk, FontWeight.SemiBold),
-    Font(R.font.space_grotesk, FontWeight.Bold)
+// Bold iPhone-style Geometric Sans-Serif Typography bundled locally via font-util
+val PlusJakartaSansFontFamily = FontFamily(
+    Font(R.font.plus_jakarta_sans, FontWeight.Medium),
+    Font(R.font.plus_jakarta_sans, FontWeight.SemiBold),
+    Font(R.font.plus_jakarta_sans, FontWeight.Bold),
+    Font(R.font.plus_jakarta_sans, FontWeight.ExtraBold)
 )
 
-val PoppinsFontFamily = FontFamily(
-    Font(R.font.poppins, FontWeight.Normal),
-    Font(R.font.poppins, FontWeight.Medium),
-    Font(R.font.poppins, FontWeight.SemiBold),
-    Font(R.font.poppins, FontWeight.Bold)
-)
-
-val JetBrainsMonoFontFamily = FontFamily(
-    Font(R.font.jetbrains_mono, FontWeight.Normal),
-    Font(R.font.jetbrains_mono, FontWeight.Medium)
+val InterFontFamily = FontFamily(
+    Font(R.font.inter, FontWeight.Normal),
+    Font(R.font.inter, FontWeight.Medium),
+    Font(R.font.inter, FontWeight.SemiBold),
+    Font(R.font.inter, FontWeight.Bold)
 )
 
 val SaveBoxTypography = Typography(
     displayLarge = TextStyle(
-        fontFamily = SpaceGroteskFontFamily,
-        fontWeight = FontWeight.Bold,
-        fontSize = 38.sp,
-        lineHeight = 44.sp,
-        letterSpacing = (-0.6).sp
+        fontFamily = PlusJakartaSansFontFamily,
+        fontWeight = FontWeight.ExtraBold,
+        fontSize = 36.sp,
+        lineHeight = 42.sp,
+        letterSpacing = (-0.8).sp
     ),
     displaySmall = TextStyle(
-        fontFamily = SpaceGroteskFontFamily,
+        fontFamily = PlusJakartaSansFontFamily,
         fontWeight = FontWeight.Bold,
         fontSize = 28.sp,
         lineHeight = 34.sp,
-        letterSpacing = (-0.3).sp
+        letterSpacing = (-0.5).sp
     ),
     headlineLarge = TextStyle(
-        fontFamily = SpaceGroteskFontFamily,
-        fontWeight = FontWeight.Bold,
-        fontSize = 25.sp,
-        lineHeight = 31.sp,
-        letterSpacing = (-0.2).sp
+        fontFamily = PlusJakartaSansFontFamily,
+        fontWeight = FontWeight.ExtraBold,
+        fontSize = 26.sp,
+        lineHeight = 32.sp,
+        letterSpacing = (-0.4).sp
     ),
     headlineMedium = TextStyle(
-        fontFamily = SpaceGroteskFontFamily,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 21.sp,
-        lineHeight = 27.sp,
-        letterSpacing = (-0.1).sp
+        fontFamily = PlusJakartaSansFontFamily,
+        fontWeight = FontWeight.Bold,
+        fontSize = 22.sp,
+        lineHeight = 28.sp,
+        letterSpacing = (-0.3).sp
     ),
     headlineSmall = TextStyle(
-        fontFamily = SpaceGroteskFontFamily,
-        fontWeight = FontWeight.SemiBold,
+        fontFamily = PlusJakartaSansFontFamily,
+        fontWeight = FontWeight.Bold,
         fontSize = 18.sp,
-        lineHeight = 24.sp
+        lineHeight = 24.sp,
+        letterSpacing = (-0.2).sp
     ),
     titleLarge = TextStyle(
-        fontFamily = SpaceGroteskFontFamily,
-        fontWeight = FontWeight.SemiBold,
+        fontFamily = PlusJakartaSansFontFamily,
+        fontWeight = FontWeight.Bold,
         fontSize = 18.sp,
-        lineHeight = 24.sp
+        lineHeight = 24.sp,
+        letterSpacing = (-0.2).sp
     ),
     titleMedium = TextStyle(
-        fontFamily = PoppinsFontFamily,
-        fontWeight = FontWeight.SemiBold,
+        fontFamily = PlusJakartaSansFontFamily,
+        fontWeight = FontWeight.Bold,
         fontSize = 15.sp,
         lineHeight = 21.sp,
-        letterSpacing = 0.1.sp
+        letterSpacing = (-0.1).sp
     ),
     titleSmall = TextStyle(
-        fontFamily = PoppinsFontFamily,
-        fontWeight = FontWeight.SemiBold,
+        fontFamily = InterFontFamily,
+        fontWeight = FontWeight.Bold,
         fontSize = 13.sp,
         lineHeight = 18.sp
     ),
     bodyLarge = TextStyle(
-        fontFamily = PoppinsFontFamily,
-        fontWeight = FontWeight.Normal,
+        fontFamily = InterFontFamily,
+        fontWeight = FontWeight.Medium,
         fontSize = 15.sp,
         lineHeight = 22.sp
     ),
     bodyMedium = TextStyle(
-        fontFamily = PoppinsFontFamily,
-        fontWeight = FontWeight.Normal,
+        fontFamily = InterFontFamily,
+        fontWeight = FontWeight.Medium,
         fontSize = 13.sp,
         lineHeight = 19.sp
     ),
     bodySmall = TextStyle(
-        fontFamily = PoppinsFontFamily,
+        fontFamily = InterFontFamily,
         fontWeight = FontWeight.Normal,
         fontSize = 12.sp,
         lineHeight = 16.sp
     ),
     labelLarge = TextStyle(
-        fontFamily = PoppinsFontFamily,
-        fontWeight = FontWeight.SemiBold,
+        fontFamily = PlusJakartaSansFontFamily,
+        fontWeight = FontWeight.Bold,
         fontSize = 13.sp,
         lineHeight = 18.sp
     ),
     labelMedium = TextStyle(
-        fontFamily = JetBrainsMonoFontFamily,
-        fontWeight = FontWeight.Medium,
+        fontFamily = InterFontFamily,
+        fontWeight = FontWeight.SemiBold,
         fontSize = 11.sp,
         lineHeight = 15.sp
     ),
     labelSmall = TextStyle(
-        fontFamily = JetBrainsMonoFontFamily,
-        fontWeight = FontWeight.Normal,
+        fontFamily = InterFontFamily,
+        fontWeight = FontWeight.SemiBold,
         fontSize = 10.sp,
         lineHeight = 14.sp
     )
