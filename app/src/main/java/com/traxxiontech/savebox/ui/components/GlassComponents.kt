@@ -132,7 +132,7 @@ fun AnimatedAuroraBackdrop(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(290.dp)
-                    .alpha(0.20f)
+                    .alpha(0.08f)
             )
         }
         Canvas(
@@ -140,8 +140,8 @@ fun AnimatedAuroraBackdrop(
         ) {
             val w = size.width
             val h = size.height
-            val pAlpha = if (isDark) 0.24f else 0.14f
-            val sAlpha = if (isDark) 0.22f else 0.12f
+            val pAlpha = if (isDark) 0.10f else 0.12f
+            val sAlpha = if (isDark) 0.08f else 0.10f
             drawCircle(
                 brush = Brush.radialGradient(
                     colorStops = arrayOf(
@@ -568,3 +568,92 @@ fun AnimatedAudioVisualizer(
         }
     }
 }
+
+/**
+ * Custom Canvas circular progress indicator that overlays directly on top of media thumbnails
+ * while a download is QUEUED, DOWNLOADING, or PAUSED.
+ */
+@Composable
+fun ThumbnailDownloadProgressOverlay(
+    progress: Float,
+    status: String,
+    isIndeterminate: Boolean = false,
+    modifier: Modifier = Modifier,
+    ringSize: Dp = 42.dp
+) {
+    val active = status == "DOWNLOADING" || status == "QUEUED" || status == "PAUSED"
+    if (!active) return
+
+    val clamped = progress.coerceIn(0f, 1f)
+    val trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.20f)
+    val arcColor = if (status == "PAUSED") {
+        MaterialTheme.colorScheme.secondary
+    } else {
+        MaterialTheme.colorScheme.primary
+    }
+    val secondaryArc = MaterialTheme.colorScheme.tertiary
+
+    val infiniteTransition = rememberInfiniteTransition(label = "thumb_dl_spin")
+    val spinAngle by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1100, easing = LinearEasing)
+        ),
+        label = "thumb_dl_angle"
+    )
+
+    Box(
+        modifier = modifier
+            .background(Color.Black.copy(alpha = 0.58f)),
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier.size(ringSize),
+            contentAlignment = Alignment.Center
+        ) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val strokePx = (size.minDimension * 0.11f).coerceIn(3f, 7f)
+                val inset = strokePx / 2f
+                val arcSize = Size(size.width - strokePx, size.height - strokePx)
+                val topLeft = Offset(inset, inset)
+
+                drawArc(
+                    color = trackColor,
+                    startAngle = 0f,
+                    sweepAngle = 360f,
+                    useCenter = false,
+                    topLeft = topLeft,
+                    size = arcSize,
+                    style = Stroke(width = strokePx, cap = StrokeCap.Round)
+                )
+
+                val start = if (isIndeterminate) spinAngle else -90f
+                val sweep = if (isIndeterminate) 110f else (clamped * 360f).coerceAtLeast(18f)
+
+                drawArc(
+                    brush = Brush.sweepGradient(listOf(arcColor, secondaryArc, arcColor)),
+                    startAngle = start,
+                    sweepAngle = sweep,
+                    useCenter = false,
+                    topLeft = topLeft,
+                    size = arcSize,
+                    style = Stroke(width = strokePx, cap = StrokeCap.Round)
+                )
+            }
+
+            val label = when {
+                status == "PAUSED" -> "||"
+                isIndeterminate || status == "QUEUED" && clamped <= 0f -> "..."
+                else -> "${(clamped * 100).toInt()}%"
+            }
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        }
+    }
+}
+

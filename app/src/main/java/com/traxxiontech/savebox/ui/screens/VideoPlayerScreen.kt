@@ -104,8 +104,10 @@ import com.traxxiontech.savebox.data.local.DownloadEntity
 import com.traxxiontech.savebox.model.VisualizerStyle
 import com.traxxiontech.savebox.ui.components.AnimatedAudioVisualizer
 import com.traxxiontech.savebox.ui.components.FormatUtils
+import com.traxxiontech.savebox.ui.components.PlayerSponsoredAdSection
 import com.traxxiontech.savebox.ui.theme.AuroraViolet
 import com.traxxiontech.savebox.ui.theme.CoralAlert
+import com.traxxiontech.savebox.ui.theme.DimTextPrimary
 import com.traxxiontech.savebox.ui.theme.ElectricCyan
 import com.traxxiontech.savebox.ui.theme.GlassBorderLight
 import com.traxxiontech.savebox.ui.viewmodel.MediaPlayerViewModel
@@ -133,6 +135,7 @@ fun VideoPlayerScreen(
 
     var showControls by remember { mutableStateOf(true) }
     var showVisualizer by remember { mutableStateOf(false) }
+    var showSponsoredStrip by remember { mutableStateOf(true) }
     var activeVisualizerStyle by remember(visualizerStyle) { mutableStateOf(visualizerStyle) }
     var isFullscreen by remember { mutableStateOf(false) }
     var pinchScale by remember { mutableFloatStateOf(1f) }
@@ -253,8 +256,8 @@ fun VideoPlayerScreen(
     val glassPanelBrush = remember {
         Brush.linearGradient(
             colors = listOf(
-                Color(0xB8111B36),
-                Color(0x8A0B1124)
+                Color(0xC2080D16),
+                Color(0xA605080E)
             )
         )
     }
@@ -356,7 +359,7 @@ fun VideoPlayerScreen(
             ) {
                 Text(
                     text = err,
-                    color = Color.White,
+                    color = DimTextPrimary,
                     style = MaterialTheme.typography.labelMedium,
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
                 )
@@ -380,7 +383,7 @@ fun VideoPlayerScreen(
                         tint = ElectricCyan
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text(label, color = Color.White, fontWeight = FontWeight.Bold)
+                    Text(label, color = DimTextPrimary, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -407,7 +410,7 @@ fun VideoPlayerScreen(
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text(label, color = Color.White, style = MaterialTheme.typography.labelLarge)
+                    Text(label, color = DimTextPrimary, style = MaterialTheme.typography.labelLarge)
                 }
             }
         }
@@ -474,9 +477,9 @@ fun VideoPlayerScreen(
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(
-                                Color(0x99060914),
-                                Color(0x28060914),
-                                Color(0xB3060914)
+                                Color(0xA6030509),
+                                Color(0x24030509),
+                                Color(0xC4030509)
                             )
                         )
                     )
@@ -505,12 +508,12 @@ fun VideoPlayerScreen(
                             },
                             modifier = Modifier.testTag("video_back_button")
                         ) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = DimTextPrimary)
                         }
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = currentVideo.title,
-                                color = Color.White,
+                                color = DimTextPrimary,
                                 style = MaterialTheme.typography.titleMedium,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
@@ -531,17 +534,17 @@ fun VideoPlayerScreen(
                             Icon(
                                 imageVector = Icons.Filled.GraphicEq,
                                 contentDescription = "Toggle Video Visualizer",
-                                tint = if (showVisualizer) ElectricCyan else Color.White
+                                tint = if (showVisualizer) ElectricCyan else DimTextPrimary
                             )
                         }
                         IconButton(onClick = { subtitlePicker.launch(arrayOf("*/*")) }) {
-                            Icon(Icons.Filled.Subtitles, contentDescription = "Load Subtitles", tint = Color.White)
+                            Icon(Icons.Filled.Subtitles, contentDescription = "Load Subtitles", tint = DimTextPrimary)
                         }
                         IconButton(onClick = { enterPiP() }) {
-                            Icon(Icons.Filled.PictureInPictureAlt, contentDescription = "Picture in Picture", tint = Color.White)
+                            Icon(Icons.Filled.PictureInPictureAlt, contentDescription = "Picture in Picture", tint = DimTextPrimary)
                         }
                         IconButton(onClick = { toggleRotation() }) {
-                            Icon(Icons.Filled.ScreenRotation, contentDescription = "Rotate Screen", tint = Color.White)
+                            Icon(Icons.Filled.ScreenRotation, contentDescription = "Rotate Screen", tint = DimTextPrimary)
                         }
                     }
                 }
@@ -568,7 +571,7 @@ fun VideoPlayerScreen(
                             Icon(
                                 imageVector = Icons.Filled.SkipPrevious,
                                 contentDescription = "Previous Video",
-                                tint = if (uiState.currentIndex > 0) Color.White else Color.White.copy(alpha = 0.35f),
+                                tint = if (uiState.currentIndex > 0) DimTextPrimary else DimTextPrimary.copy(alpha = 0.35f),
                                 modifier = Modifier.size(32.dp)
                             )
                         }
@@ -580,7 +583,7 @@ fun VideoPlayerScreen(
                             Icon(
                                 imageVector = Icons.Filled.FastRewind,
                                 contentDescription = "Rewind 10 seconds",
-                                tint = Color.White,
+                                tint = DimTextPrimary,
                                 modifier = Modifier.size(28.dp)
                             )
                         }
@@ -592,13 +595,13 @@ fun VideoPlayerScreen(
                                 .shadow(12.dp, CircleShape, ambientColor = ElectricCyan.copy(alpha = 0.45f))
                                 .clip(CircleShape)
                                 .background(Brush.linearGradient(listOf(ElectricCyan, AuroraViolet)))
-                                .border(1.5.dp, Color.White.copy(alpha = 0.55f), CircleShape)
+                                .border(1.5.dp, DimTextPrimary.copy(alpha = 0.55f), CircleShape)
                                 .testTag("video_play_pause_button")
                         ) {
                             Icon(
                                 imageVector = if (uiState.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                                 contentDescription = "Play or Pause",
-                                tint = Color.White,
+                                tint = DimTextPrimary,
                                 modifier = Modifier.size(36.dp)
                             )
                         }
@@ -610,7 +613,7 @@ fun VideoPlayerScreen(
                             Icon(
                                 imageVector = Icons.Filled.FastForward,
                                 contentDescription = "Forward 10 seconds",
-                                tint = Color.White,
+                                tint = DimTextPrimary,
                                 modifier = Modifier.size(28.dp)
                             )
                         }
@@ -623,7 +626,7 @@ fun VideoPlayerScreen(
                             Icon(
                                 imageVector = Icons.Filled.SkipNext,
                                 contentDescription = "Next Video",
-                                tint = if (uiState.currentIndex < uiState.playlist.lastIndex) Color.White else Color.White.copy(alpha = 0.35f),
+                                tint = if (uiState.currentIndex < uiState.playlist.lastIndex) DimTextPrimary else DimTextPrimary.copy(alpha = 0.35f),
                                 modifier = Modifier.size(32.dp)
                             )
                         }
@@ -696,7 +699,7 @@ fun VideoPlayerScreen(
                                 colors = SliderDefaults.colors(
                                     thumbColor = ElectricCyan,
                                     activeTrackColor = ElectricCyan,
-                                    inactiveTrackColor = Color.White.copy(alpha = 0.24f)
+                                    inactiveTrackColor = DimTextPrimary.copy(alpha = 0.24f)
                                 )
                             )
 
@@ -707,7 +710,7 @@ fun VideoPlayerScreen(
                             ) {
                                 Text(
                                     text = "${FormatUtils.formatDuration(displayedPositionMs)} / ${FormatUtils.formatDuration(durationMs)}",
-                                    color = Color.White,
+                                    color = DimTextPrimary,
                                     style = MaterialTheme.typography.labelMedium,
                                     fontWeight = FontWeight.Medium
                                 )
@@ -717,7 +720,7 @@ fun VideoPlayerScreen(
                                         Icon(
                                             imageVector = if (uiState.isMuted) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
                                             contentDescription = if (uiState.isMuted) "Unmute" else "Mute",
-                                            tint = if (uiState.isMuted) CoralAlert else Color.White
+                                            tint = if (uiState.isMuted) CoralAlert else DimTextPrimary
                                         )
                                     }
                                     IconButton(onClick = { playerViewModel.cycleSpeed() }) {
@@ -726,24 +729,31 @@ fun VideoPlayerScreen(
                                             Spacer(modifier = Modifier.width(2.dp))
                                             Text(
                                                 text = "${uiState.playbackSpeed}x",
-                                                color = Color.White,
+                                                color = DimTextPrimary,
                                                 style = MaterialTheme.typography.labelSmall
                                             )
                                         }
                                     }
                                     IconButton(onClick = { playerViewModel.cycleResizeMode() }) {
-                                        Icon(Icons.Filled.AspectRatio, contentDescription = "Aspect Ratio", tint = Color.White)
+                                        Icon(Icons.Filled.AspectRatio, contentDescription = "Aspect Ratio", tint = DimTextPrimary)
                                     }
                                     IconButton(onClick = { toggleFullscreen() }) {
                                         Icon(
                                             imageVector = if (isFullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
                                             contentDescription = "Fullscreen",
-                                            tint = Color.White
+                                            tint = DimTextPrimary
                                         )
                                     }
                                 }
                             }
                         }
+                    }
+
+                    if (showSponsoredStrip && !isFullscreen) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        PlayerSponsoredAdSection(
+                            onDismiss = { showSponsoredStrip = false }
+                        )
                     }
                 }
             }

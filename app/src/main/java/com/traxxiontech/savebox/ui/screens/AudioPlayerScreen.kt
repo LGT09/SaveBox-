@@ -76,6 +76,7 @@ import com.traxxiontech.savebox.R
 import com.traxxiontech.savebox.data.local.DownloadEntity
 import com.traxxiontech.savebox.model.VisualizerStyle
 import com.traxxiontech.savebox.player.SleepTimerOption
+import com.traxxiontech.savebox.ui.components.AdBannerView
 import com.traxxiontech.savebox.ui.components.AnimatedAudioVisualizer
 import com.traxxiontech.savebox.ui.components.FormatUtils
 import com.traxxiontech.savebox.ui.components.GlassCard
@@ -519,6 +520,8 @@ fun AudioPlayerScreen(
                         Icon(Icons.AutoMirrored.Filled.QueueMusic, contentDescription = "Playback Queue")
                     }
                 }
+                Spacer(modifier = Modifier.height(4.dp))
+                AdBannerView()
             }
         }
     }

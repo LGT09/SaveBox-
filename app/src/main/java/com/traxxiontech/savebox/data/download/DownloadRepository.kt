@@ -12,6 +12,8 @@ import com.traxxiontech.savebox.data.local.DownloadDao
 import com.traxxiontech.savebox.data.local.DownloadEntity
 import com.traxxiontech.savebox.data.local.DownloadQueue
 import com.traxxiontech.savebox.data.local.DownloadQueueDao
+import com.traxxiontech.savebox.data.local.FavoriteEntity
+import com.traxxiontech.savebox.data.local.FavoritesDao
 import com.traxxiontech.savebox.data.local.MediaItem
 import com.traxxiontech.savebox.data.local.MediaItemDao
 import com.traxxiontech.savebox.data.local.MediaMetadataDao
@@ -45,6 +47,7 @@ class DownloadRepository(
     private val mediaMetadataDao: MediaMetadataDao,
     private val searchHistoryDao: SearchHistoryDao,
     private val playlistDao: PlaylistDao,
+    private val favoritesDao: FavoritesDao,
     private val storageManager: StorageManager
 ) {
     private val workManager: WorkManager by lazy { WorkManager.getInstance(context) }
@@ -56,6 +59,7 @@ class DownloadRepository(
     val activeDownloadQueue: Flow<List<DownloadQueue>> = downloadQueueDao.observeQueue()
     val allMediaItems: Flow<List<MediaItem>> = mediaItemDao.observeAllMediaItems()
     val favorites: Flow<List<DownloadEntity>> = downloadDao.observeFavorites()
+    val favoriteEntries: Flow<List<FavoriteEntity>> = favoritesDao.observeAllFavorites()
     val recentlyPlayed: Flow<List<DownloadEntity>> = downloadDao.observeRecentlyPlayed()
     val recentSearches: Flow<List<SearchHistoryEntity>> = searchHistoryDao.observeRecentSearches()
     val playlists: Flow<List<PlaylistWithTracks>> = playlistDao.observePlaylistsWithTracks()
@@ -194,13 +198,31 @@ class DownloadRepository(
             runCatching { File(path).delete() }
             mediaItemDao.deleteByFilePath(path)
         }
+        favoritesDao.deleteByDownloadId(item.id)
         downloadQueueDao.deleteByDownloadId(item.id)
         downloadDao.deleteById(item.id)
         mediaMetadataDao.updateFileAndStatus(item.sourceUrl, null, "DELETED")
     }
 
     suspend fun toggleFavorite(item: DownloadEntity) {
-        downloadDao.setFavorite(item.id, !item.isFavorite)
+        val nextFavorite = !item.isFavorite
+        downloadDao.setFavorite(item.id, nextFavorite)
+        if (nextFavorite) {
+            favoritesDao.upsert(
+                FavoriteEntity(
+                    downloadId = item.id,
+                    title = item.title,
+                    filePath = item.localFilePath,
+                    mediaType = item.mediaType,
+                    sourceHost = item.sourceHost,
+                    thumbnailUrl = item.thumbnailUrl,
+                    durationMs = item.durationMs,
+                    fileSizeBytes = item.fileSizeBytes
+                )
+            )
+        } else {
+            favoritesDao.deleteByDownloadId(item.id)
+        }
     }
 
     suspend fun renameDownload(item: DownloadEntity, newTitle: String) = withContext(Dispatchers.IO) {
@@ -228,6 +250,42 @@ class DownloadRepository(
                 mediaItemDao.upsert(mi.copy(title = trimmed, filePath = updatedPath))
             }
         }
+        favoritesDao.getByDownloadId(item.id)?.let { fav ->
+            favoritesDao.upsert(fav.copy(title = trimmed, filePath = updatedPath))
+        }
+    }
+
+    suspend fun syncFileRenamed(oldPath: String, newPath: String, newName: String) = withContext(Dispatchers.IO) {
+        val cleanTitle = newName.substringBeforeLast('.').ifBlank { newName }
+        downloadDao.getByPathOrUri(oldPath)?.let { entity ->
+            downloadDao.update(entity.copy(title = cleanTitle, fileName = newName, localFilePath = newPath))
+            favoritesDao.getByDownloadId(entity.id)?.let { fav ->
+                favoritesDao.upsert(fav.copy(title = cleanTitle, filePath = newPath))
+            }
+        }
+        mediaItemDao.getByFilePath(oldPath)?.let { mi ->
+            mediaItemDao.upsert(mi.copy(title = cleanTitle, filePath = newPath))
+        }
+    }
+
+    suspend fun syncFileMoved(oldPath: String, newPath: String, newFolder: String) = withContext(Dispatchers.IO) {
+        downloadDao.getByPathOrUri(oldPath)?.let { entity ->
+            downloadDao.updateFolderAndPath(entity.id, newFolder, newPath)
+            favoritesDao.getByDownloadId(entity.id)?.let { fav ->
+                favoritesDao.upsert(fav.copy(filePath = newPath))
+            }
+        }
+        mediaItemDao.getByFilePath(oldPath)?.let { mi ->
+            mediaItemDao.upsert(mi.copy(filePath = newPath))
+        }
+    }
+
+    suspend fun syncFileDeleted(pathOrUri: String) = withContext(Dispatchers.IO) {
+        downloadDao.getByPathOrUri(pathOrUri)?.let { entity ->
+            favoritesDao.deleteByDownloadId(entity.id)
+            downloadDao.deleteById(entity.id)
+        }
+        mediaItemDao.deleteByFilePath(pathOrUri)
     }
 
     suspend fun updatePlaybackPosition(downloadId: Long, positionMs: Long, incrementPlayCount: Boolean) {

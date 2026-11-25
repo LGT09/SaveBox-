@@ -168,3 +168,27 @@ data class PlaylistWithTracks(
     )
     val tracks: List<DownloadEntity>
 )
+
+/**
+ * Dedicated Room entity storing bookmarked Favorites for fast access across the app.
+ */
+@Entity(
+    tableName = "favorites",
+    indices = [
+        Index(value = ["downloadId"], unique = true),
+        Index(value = ["bookmarkedAt"])
+    ]
+)
+data class FavoriteEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    @ColumnInfo(name = "downloadId") val downloadId: Long,
+    @ColumnInfo(name = "title") val title: String,
+    @ColumnInfo(name = "filePath") val filePath: String? = null,
+    @ColumnInfo(name = "mediaType") val mediaType: String,
+    @ColumnInfo(name = "sourceHost") val sourceHost: String = "web",
+    @ColumnInfo(name = "thumbnailUrl") val thumbnailUrl: String? = null,
+    @ColumnInfo(name = "durationMs") val durationMs: Long = 0L,
+    @ColumnInfo(name = "fileSizeBytes") val fileSizeBytes: Long = 0L,
+    @ColumnInfo(name = "bookmarkedAt") val bookmarkedAt: Long = System.currentTimeMillis()
+)
+

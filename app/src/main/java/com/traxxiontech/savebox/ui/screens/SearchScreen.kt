@@ -386,7 +386,7 @@ fun SearchScreen(
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(16.dp))
                             .clickable {
-                                viewModel.startDownload(
+                                viewModel.requestDownloadWithAd(
                                     analyzed = analyzed,
                                     format = opt,
                                     customTitle = analyzed.title,

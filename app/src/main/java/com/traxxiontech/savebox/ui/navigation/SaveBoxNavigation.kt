@@ -69,8 +69,10 @@ import androidx.navigation.toRoute
 import com.traxxiontech.savebox.data.local.DownloadEntity
 import com.traxxiontech.savebox.model.MediaType
 import com.traxxiontech.savebox.ui.components.AnimatedAuroraBackdrop
+import com.traxxiontech.savebox.ui.components.RewardedDownloadPassDialog
 import com.traxxiontech.savebox.ui.screens.AudioPlayerScreen
 import com.traxxiontech.savebox.ui.screens.BrowserScreen
+import com.traxxiontech.savebox.ui.screens.FileManagerScreen
 import com.traxxiontech.savebox.ui.screens.HomeScreen
 import com.traxxiontech.savebox.ui.screens.LibraryScreen
 import com.traxxiontech.savebox.ui.screens.MiniAudioPlayerBar
@@ -93,6 +95,7 @@ sealed interface SaveBoxRoute {
     @Serializable data object Library : SaveBoxRoute
     @Serializable data object Search : SaveBoxRoute
     @Serializable data object StatusSaver : SaveBoxRoute
+    @Serializable data object FileManager : SaveBoxRoute
     @Serializable data object Settings : SaveBoxRoute
     @Serializable data object PrivacyPolicy : SaveBoxRoute
     @Serializable data object Queue : SaveBoxRoute
@@ -175,6 +178,7 @@ private fun SaveBoxMainApp(viewModel: MainViewModel) {
     val transientPlayTarget by viewModel.transientPlayTarget.collectAsStateWithLifecycle()
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val audioState by viewModel.audioPlayerState.collectAsStateWithLifecycle()
+    val showRewardedAdDialog by viewModel.showRewardedAdDialog.collectAsStateWithLifecycle()
 
     val notificationPermLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -265,17 +269,17 @@ private fun SaveBoxMainApp(viewModel: MainViewModel) {
                                 label = { Text(tab.label) }
                             )
                         }
-                        val folderSelected = backStackEntry?.destination?.hasRoute<SaveBoxRoute.StatusSaver>() == true
+                        val filesSelected = backStackEntry?.destination?.hasRoute<SaveBoxRoute.FileManager>() == true
                         NavigationRailItem(
-                            selected = folderSelected,
-                            onClick = { navigateToTab(SaveBoxRoute.StatusSaver) },
+                            selected = filesSelected,
+                            onClick = { navigateToTab(SaveBoxRoute.FileManager) },
                             icon = {
                                 Icon(
-                                    imageVector = if (folderSelected) Icons.Filled.FolderOpen else Icons.Outlined.FolderOpen,
-                                    contentDescription = "Folders"
+                                    imageVector = if (filesSelected) Icons.Filled.FolderOpen else Icons.Outlined.FolderOpen,
+                                    contentDescription = "Files"
                                 )
                             },
-                            label = { Text("Folders") }
+                            label = { Text("Files") }
                         )
                     }
                 }
@@ -340,6 +344,7 @@ private fun SaveBoxMainApp(viewModel: MainViewModel) {
                                         navigateToTab(SaveBoxRoute.Search)
                                     },
                                     onOpenLibrary = { navigateToTab(SaveBoxRoute.Library) },
+                                    onOpenFileManager = { navController.navigate(SaveBoxRoute.FileManager) },
                                     onOpenPrivacyPolicy = { navController.navigate(SaveBoxRoute.PrivacyPolicy) },
                                     onOpenBrowser = { navigateToTab(SaveBoxRoute.Browser) },
                                     onOpenAudioPlayer = { navController.navigate(SaveBoxRoute.AudioPlayer) },
@@ -360,7 +365,8 @@ private fun SaveBoxMainApp(viewModel: MainViewModel) {
                             composable<SaveBoxRoute.Library> {
                                 LibraryScreen(
                                     viewModel = viewModel,
-                                    onPlayMedia = { playMediaEntity(it) }
+                                    onPlayMedia = { playMediaEntity(it) },
+                                    onOpenFileManager = { navController.navigate(SaveBoxRoute.FileManager) }
                                 )
                             }
 
@@ -382,6 +388,15 @@ private fun SaveBoxMainApp(viewModel: MainViewModel) {
                             composable<SaveBoxRoute.StatusSaver> {
                                 BackHandler { navigateToTab(SaveBoxRoute.Home) }
                                 StatusSaverScreen(viewModel = viewModel)
+                            }
+
+                            composable<SaveBoxRoute.FileManager> {
+                                BackHandler { navController.popBackStack() }
+                                FileManagerScreen(
+                                    viewModel = viewModel,
+                                    onBack = { navController.popBackStack() },
+                                    onPlayMedia = { playMediaEntity(it) }
+                                )
                             }
 
                             composable<SaveBoxRoute.Settings> {
@@ -461,6 +476,12 @@ private fun SaveBoxMainApp(viewModel: MainViewModel) {
                     }
                 }
             }
+        }
+        if (showRewardedAdDialog) {
+            RewardedDownloadPassDialog(
+                onDismiss = { viewModel.dismissRewardedAdDialog() },
+                onRewardGranted = { viewModel.grantDownloadPass() }
+            )
         }
     }
 }

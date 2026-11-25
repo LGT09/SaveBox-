@@ -49,7 +49,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -58,6 +60,7 @@ import com.traxxiontech.savebox.model.AppThemePalette
 import com.traxxiontech.savebox.model.VisualizerStyle
 import com.traxxiontech.savebox.ui.components.FormatUtils
 import com.traxxiontech.savebox.ui.components.GlassCard
+import com.traxxiontech.savebox.ui.components.SaveBoxAdUnits
 import com.traxxiontech.savebox.ui.viewmodel.MainViewModel
 
 @Composable
@@ -67,6 +70,7 @@ fun SettingsScreen(
     onOpenPrivacyPolicy: () -> Unit = {}
 ) {
     val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val storageBreakdown by viewModel.storageBreakdown.collectAsStateWithLifecycle()
     val cacheSizeBytes by viewModel.cacheSizeBytes.collectAsStateWithLifecycle()
@@ -371,6 +375,36 @@ fun SettingsScreen(
                         Icon(Icons.Filled.PrivacyTip, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("Read Full Privacy Policy")
+                    }
+                }
+            }
+
+            // AdMob & app-ads.txt Verification Card
+            item {
+                GlassCard(cornerRadius = 22.dp, contentPadding = 16.dp) {
+                    Text("AdMob & app-ads.txt Verification", style = MaterialTheme.typography.titleMedium)
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "Publish the IAB Tech Lab authorization snippet at https://traxxiontech.com/app-ads.txt so AdMob crawlers verify SaveBox inventory within 24 hours.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = SaveBoxAdUnits.APP_ADS_TXT_LINE,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    OutlinedButton(
+                        onClick = {
+                            clipboard.setText(AnnotatedString(SaveBoxAdUnits.APP_ADS_TXT_LINE))
+                            viewModel.showMessage("Copied app-ads.txt record to clipboard")
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Text("Copy app-ads.txt Snippet")
                     }
                 }
             }

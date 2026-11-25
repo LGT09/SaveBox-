@@ -1,10 +1,12 @@
 package com.traxxiontech.savebox.di
 
 import android.content.Context
+import com.traxxiontech.savebox.data.download.DocumentFileManager
 import com.traxxiontech.savebox.data.download.DownloadRepository
 import com.traxxiontech.savebox.data.download.StorageManager
 import com.traxxiontech.savebox.data.local.DownloadDao
 import com.traxxiontech.savebox.data.local.DownloadQueueDao
+import com.traxxiontech.savebox.data.local.FavoritesDao
 import com.traxxiontech.savebox.data.local.MediaItemDao
 import com.traxxiontech.savebox.data.local.MediaMetadataDao
 import com.traxxiontech.savebox.data.local.PlaylistDao
@@ -57,6 +59,10 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun provideFavoritesDao(database: SaveBoxDatabase): FavoritesDao = database.favoritesDao()
+
+    @Provides
+    @Singleton
     fun provideSettingsDataStore(@ApplicationContext context: Context): SettingsDataStore {
         return SettingsDataStore(context)
     }
@@ -69,6 +75,15 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun provideDocumentFileManager(
+        @ApplicationContext context: Context,
+        storageManager: StorageManager
+    ): DocumentFileManager {
+        return DocumentFileManager(context, storageManager)
+    }
+
+    @Provides
+    @Singleton
     fun provideDownloadRepository(
         @ApplicationContext context: Context,
         downloadDao: DownloadDao,
@@ -77,6 +92,7 @@ object AppModule {
         mediaMetadataDao: MediaMetadataDao,
         searchHistoryDao: SearchHistoryDao,
         playlistDao: PlaylistDao,
+        favoritesDao: FavoritesDao,
         storageManager: StorageManager
     ): DownloadRepository {
         return DownloadRepository(
@@ -87,6 +103,7 @@ object AppModule {
             mediaMetadataDao = mediaMetadataDao,
             searchHistoryDao = searchHistoryDao,
             playlistDao = playlistDao,
+            favoritesDao = favoritesDao,
             storageManager = storageManager
         )
     }

@@ -13,9 +13,10 @@ import androidx.room.RoomDatabase
         MediaMetadataEntity::class,
         SearchHistoryEntity::class,
         PlaylistEntity::class,
-        PlaylistTrackCrossRef::class
+        PlaylistTrackCrossRef::class,
+        FavoriteEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class SaveBoxDatabase : RoomDatabase() {
@@ -25,6 +26,7 @@ abstract class SaveBoxDatabase : RoomDatabase() {
     abstract fun mediaMetadataDao(): MediaMetadataDao
     abstract fun searchHistoryDao(): SearchHistoryDao
     abstract fun playlistDao(): PlaylistDao
+    abstract fun favoritesDao(): FavoritesDao
 
     companion object {
         @Volatile

@@ -48,6 +48,7 @@ import com.traxxiontech.savebox.data.local.DownloadEntity
 import com.traxxiontech.savebox.ui.components.FormatUtils
 import com.traxxiontech.savebox.ui.components.LiquidGlassCard
 import com.traxxiontech.savebox.ui.components.MediaSourceBadgeChip
+import com.traxxiontech.savebox.ui.components.ThumbnailDownloadProgressOverlay
 import com.traxxiontech.savebox.ui.theme.EmeraldMint
 import com.traxxiontech.savebox.ui.viewmodel.MainViewModel
 
@@ -151,16 +152,27 @@ private fun QueueDownloadCard(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            AsyncImage(
-                model = item.thumbnailUrl ?: R.drawable.img_album_placeholder,
-                contentDescription = item.title,
-                placeholder = painterResource(id = R.drawable.img_album_placeholder),
-                error = painterResource(id = R.drawable.img_album_placeholder),
-                contentScale = ContentScale.Crop,
+            Box(
                 modifier = Modifier
-                    .size(58.dp)
+                    .size(62.dp)
                     .clip(RoundedCornerShape(14.dp))
-            )
+            ) {
+                AsyncImage(
+                    model = item.thumbnailUrl ?: R.drawable.img_album_placeholder,
+                    contentDescription = item.title,
+                    placeholder = painterResource(id = R.drawable.img_album_placeholder),
+                    error = painterResource(id = R.drawable.img_album_placeholder),
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+                ThumbnailDownloadProgressOverlay(
+                    progress = item.progressFraction,
+                    status = item.status,
+                    isIndeterminate = item.status == "DOWNLOADING" && item.fileSizeBytes <= 0L,
+                    modifier = Modifier.fillMaxSize(),
+                    ringSize = 42.dp
+                )
+            }
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(

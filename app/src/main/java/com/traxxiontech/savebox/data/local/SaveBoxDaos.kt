@@ -58,6 +58,9 @@ interface DownloadDao {
     @Query("UPDATE downloads SET title = :newTitle, fileName = :newFileName WHERE id = :id")
     suspend fun renameItem(id: Long, newTitle: String, newFileName: String)
 
+    @Query("UPDATE downloads SET folderCategory = :folder, localFilePath = :newPath WHERE id = :id")
+    suspend fun updateFolderAndPath(id: Long, folder: String, newPath: String?)
+
     @Query("DELETE FROM downloads WHERE id = :id")
     suspend fun deleteById(id: Long)
 
@@ -185,3 +188,25 @@ interface PlaylistDao {
     @Query("DELETE FROM playlists WHERE id = :playlistId")
     suspend fun deletePlaylist(playlistId: Long)
 }
+
+@Dao
+interface FavoritesDao {
+    @Query("SELECT * FROM favorites ORDER BY bookmarkedAt DESC")
+    fun observeAllFavorites(): Flow<List<FavoriteEntity>>
+
+    @Query("SELECT * FROM favorites WHERE downloadId = :downloadId LIMIT 1")
+    suspend fun getByDownloadId(downloadId: Long): FavoriteEntity?
+
+    @Query("SELECT EXISTS(SELECT 1 FROM favorites WHERE downloadId = :downloadId)")
+    fun isFavoriteFlow(downloadId: Long): Flow<Boolean>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(favorite: FavoriteEntity): Long
+
+    @Query("DELETE FROM favorites WHERE downloadId = :downloadId")
+    suspend fun deleteByDownloadId(downloadId: Long)
+
+    @Query("DELETE FROM favorites")
+    suspend fun clearAll()
+}
+

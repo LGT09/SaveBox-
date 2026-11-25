@@ -4,10 +4,12 @@ import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.traxxiontech.savebox.data.download.DocumentFileManager
 import com.traxxiontech.savebox.data.download.DownloadRepository
 import com.traxxiontech.savebox.data.download.StorageManager
 import com.traxxiontech.savebox.data.local.DownloadEntity
 import com.traxxiontech.savebox.data.local.DownloadQueue
+import com.traxxiontech.savebox.data.local.FavoriteEntity
 import com.traxxiontech.savebox.data.local.MediaItem
 import com.traxxiontech.savebox.data.local.MediaMetadataEntity
 import com.traxxiontech.savebox.data.local.PlaylistWithTracks
@@ -24,6 +26,7 @@ import com.traxxiontech.savebox.data.status.StatusSaverRepository
 import com.traxxiontech.savebox.model.AnalyzedMedia
 import com.traxxiontech.savebox.model.AppThemeMode
 import com.traxxiontech.savebox.model.AppThemePalette
+import com.traxxiontech.savebox.model.DocumentFileEntry
 import com.traxxiontech.savebox.model.LibraryFilter
 import com.traxxiontech.savebox.model.LocalFolderMediaItem
 import com.traxxiontech.savebox.model.MediaFormatOption
@@ -78,6 +81,7 @@ class MainViewModel @Inject constructor(
     private val inAppBrowserEngine: InAppBrowserEngine,
     private val downloadRepo: DownloadRepository,
     private val storageManager: StorageManager,
+    private val documentFileManager: DocumentFileManager,
     private val statusRepo: StatusSaverRepository,
     private val localMediaScanner: LocalMediaScanner,
     private val settingsStore: SettingsDataStore,
@@ -106,6 +110,9 @@ class MainViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val favoriteDownloads: StateFlow<List<DownloadEntity>> = downloadRepo.favorites
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val favoriteEntries: StateFlow<List<FavoriteEntity>> = downloadRepo.favoriteEntries
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val recentlyPlayed: StateFlow<List<DownloadEntity>> = downloadRepo.recentlyPlayed
@@ -246,9 +253,23 @@ class MainViewModel @Inject constructor(
     private val _snackbarMessage = MutableStateFlow<String?>(null)
     val snackbarMessage: StateFlow<String?> = _snackbarMessage.asStateFlow()
 
+    // DocumentFile File Management state
+    private val _managedDocumentFiles = MutableStateFlow<List<DocumentFileEntry>>(emptyList())
+    val managedDocumentFiles: StateFlow<List<DocumentFileEntry>> = _managedDocumentFiles.asStateFlow()
+
+    private val _selectedFileCategory = MutableStateFlow("All")
+    val selectedFileCategory: StateFlow<String> = _selectedFileCategory.asStateFlow()
+
+    private val _activeSafTreeUri = MutableStateFlow<String?>(null)
+    val activeSafTreeUri: StateFlow<String?> = _activeSafTreeUri.asStateFlow()
+
+    private val _isRefreshingFiles = MutableStateFlow(false)
+    val isRefreshingFiles: StateFlow<Boolean> = _isRefreshingFiles.asStateFlow()
+
     init {
         mediaControllerManager.connect()
         refreshStorageMetrics()
+        refreshManagedFiles()
         scanDeviceMedia(silent = true)
         viewModelScope.launch {
             settings
@@ -392,6 +413,58 @@ class MainViewModel @Inject constructor(
         _analyzeState.value = AnalyzeUiState.Idle
     }
 
+    private val _showRewardedAdDialog = MutableStateFlow(false)
+    val showRewardedAdDialog: StateFlow<Boolean> = _showRewardedAdDialog.asStateFlow()
+
+    private val _downloadPassExpiresAtMs = MutableStateFlow(0L)
+    val downloadPassExpiresAtMs: StateFlow<Long> = _downloadPassExpiresAtMs.asStateFlow()
+
+    private var pendingDownloadPayload: (suspend () -> Unit)? = null
+
+    fun hasActiveDownloadPass(nowMs: Long = System.currentTimeMillis()): Boolean {
+        return nowMs < _downloadPassExpiresAtMs.value
+    }
+
+    fun openDownloadPassAd() {
+        _showRewardedAdDialog.value = true
+    }
+
+    fun requestDownloadWithAd(
+        analyzed: AnalyzedMedia,
+        format: MediaFormatOption,
+        customTitle: String,
+        customFolder: String?,
+        alsoSaveCoverArt: Boolean = (format.mediaType == MediaType.AUDIO && !analyzed.thumbnailUrl.isNullOrBlank())
+    ) {
+        if (hasActiveDownloadPass()) {
+            startDownload(analyzed, format, customTitle, customFolder, alsoSaveCoverArt)
+            return
+        }
+        pendingDownloadPayload = {
+            startDownload(analyzed, format, customTitle, customFolder, alsoSaveCoverArt)
+        }
+        _showRewardedAdDialog.value = true
+    }
+
+    fun dismissRewardedAdDialog() {
+        _showRewardedAdDialog.value = false
+        pendingDownloadPayload = null
+    }
+
+    fun grantDownloadPass(durationMinutes: Long = 60L) {
+        _downloadPassExpiresAtMs.value = System.currentTimeMillis() + durationMinutes * 60_000L
+        _showRewardedAdDialog.value = false
+        val action = pendingDownloadPayload
+        pendingDownloadPayload = null
+        viewModelScope.launch {
+            if (action != null) {
+                action.invoke()
+            } else {
+                _snackbarMessage.value = "Download Pass unlocked for $durationMinutes minutes!"
+            }
+        }
+    }
+
     fun startDownload(
         analyzed: AnalyzedMedia,
         format: MediaFormatOption,
@@ -477,15 +550,13 @@ class MainViewModel @Inject constructor(
                     if (chosen == null) {
                         _snackbarMessage.value = "Could not extract audio/video stream from YouTube"
                     } else {
-                        downloadRepo.enqueueDownload(
+                        requestDownloadWithAd(
                             analyzed = analyzed,
                             format = chosen,
                             customTitle = item.title,
                             customFolder = null,
                             alsoSaveCoverArt = true
                         )
-                        _snackbarMessage.value = "Downloading \"${item.title}\" + Cover Art (${chosen.label})"
-                        refreshStorageMetrics()
                     }
                 }
                 is ApiResult.Error -> {
@@ -782,4 +853,89 @@ class MainViewModel @Inject constructor(
     }
 
     fun getStorageBreakdownFolders(): List<String> = StorageManager.ALL_SAVEBOX_FOLDERS
+
+    // DocumentFile File Management operations
+    fun selectFileCategory(category: String) {
+        _selectedFileCategory.value = category
+        refreshManagedFiles()
+    }
+
+    fun onSafTreeSelectedForFileManager(uri: Uri) {
+        _activeSafTreeUri.value = uri.toString()
+        _selectedFileCategory.value = "SAF Folder"
+        refreshManagedFiles()
+    }
+
+    fun refreshManagedFiles() {
+        viewModelScope.launch {
+            _isRefreshingFiles.value = true
+            val cat = _selectedFileCategory.value
+            val files = if (cat == "SAF Folder") {
+                _activeSafTreeUri.value?.let { documentFileManager.listSafTreeFiles(it) } ?: emptyList()
+            } else {
+                documentFileManager.listSaveBoxCategoryFiles(cat)
+            }
+            _managedDocumentFiles.value = files
+            _isRefreshingFiles.value = false
+        }
+    }
+
+    fun createDocumentFolder(folderName: String) {
+        viewModelScope.launch {
+            val cat = _selectedFileCategory.value
+            val isSaf = cat == "SAF Folder"
+            val target = if (isSaf) _activeSafTreeUri.value else cat
+            val ok = documentFileManager.createFolder(target, folderName, isSaf)
+            if (ok) {
+                _snackbarMessage.value = "Folder \"$folderName\" created"
+                refreshManagedFiles()
+                refreshStorageMetrics()
+            } else {
+                _snackbarMessage.value = "Could not create folder"
+            }
+        }
+    }
+
+    fun renameDocumentEntry(entry: DocumentFileEntry, newName: String) {
+        viewModelScope.launch {
+            val res = documentFileManager.renameEntry(entry, newName)
+            if (res.success && res.oldPath != null && res.newPath != null && res.newName != null) {
+                downloadRepo.syncFileRenamed(res.oldPath, res.newPath, res.newName)
+                _snackbarMessage.value = "Renamed to \"${res.newName}\""
+                refreshManagedFiles()
+                refreshStorageMetrics()
+            } else {
+                _snackbarMessage.value = "Unable to rename \"${entry.name}\""
+            }
+        }
+    }
+
+    fun moveDocumentEntry(entry: DocumentFileEntry, targetCategory: String) {
+        viewModelScope.launch {
+            val res = documentFileManager.moveToSaveBoxCategory(entry, targetCategory)
+            if (res.success && res.oldPath != null && res.newPath != null && res.newFolder != null) {
+                downloadRepo.syncFileMoved(res.oldPath, res.newPath, res.newFolder)
+                _snackbarMessage.value = "Moved \"${entry.name}\" to $targetCategory"
+                refreshManagedFiles()
+                refreshStorageMetrics()
+            } else {
+                _snackbarMessage.value = "Unable to move \"${entry.name}\""
+            }
+        }
+    }
+
+    fun deleteDocumentEntry(entry: DocumentFileEntry) {
+        viewModelScope.launch {
+            val ok = documentFileManager.deleteEntry(entry)
+            if (ok) {
+                downloadRepo.syncFileDeleted(entry.localFilePath ?: entry.uriString)
+                _snackbarMessage.value = "Deleted \"${entry.name}\""
+                refreshManagedFiles()
+                refreshStorageMetrics()
+            } else {
+                _snackbarMessage.value = "Unable to delete \"${entry.name}\""
+            }
+        }
+    }
 }
+

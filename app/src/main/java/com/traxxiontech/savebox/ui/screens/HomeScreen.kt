@@ -46,6 +46,7 @@ import androidx.compose.material.icons.filled.PrivacyTip
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.VideoFile
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -93,6 +94,7 @@ import com.traxxiontech.savebox.ui.components.FormatUtils
 import com.traxxiontech.savebox.ui.components.LiquidGlassCard
 import com.traxxiontech.savebox.ui.components.MediaSourceBadgeChip
 import com.traxxiontech.savebox.ui.components.ShimmerSkeletonCard
+import com.traxxiontech.savebox.ui.components.ThumbnailDownloadProgressOverlay
 import com.traxxiontech.savebox.ui.theme.AuroraViolet
 import com.traxxiontech.savebox.ui.theme.ElectricCyan
 import com.traxxiontech.savebox.ui.theme.EmeraldMint
@@ -105,6 +107,7 @@ fun HomeScreen(
     onOpenQueue: () -> Unit,
     onOpenSearch: (SearchScope) -> Unit,
     onOpenLibrary: () -> Unit,
+    onOpenFileManager: () -> Unit,
     onOpenPrivacyPolicy: () -> Unit,
     onOpenBrowser: () -> Unit,
     onOpenAudioPlayer: () -> Unit,
@@ -120,6 +123,7 @@ fun HomeScreen(
     val recentSearches by viewModel.recentSearches.collectAsStateWithLifecycle()
     val storageBreakdown by viewModel.storageBreakdown.collectAsStateWithLifecycle()
     val settings by viewModel.settings.collectAsStateWithLifecycle()
+    val downloadPassExpiresAtMs by viewModel.downloadPassExpiresAtMs.collectAsStateWithLifecycle()
 
     val clipboardManager = LocalClipboardManager.current
 
@@ -134,6 +138,10 @@ fun HomeScreen(
 
     val totalSavedBytes = storageBreakdown.sumOf { it.sizeBytes }
     val activeQueueCount = queueDownloads.count { it.status == "DOWNLOADING" || it.status == "QUEUED" }
+    val passRemainingMinutes = remember(downloadPassExpiresAtMs, activeQueueCount) {
+        val diff = downloadPassExpiresAtMs - System.currentTimeMillis()
+        if (diff > 0L) (diff / 60_000L).coerceAtLeast(1L) else 0L
+    }
 
     Box(
         modifier = Modifier.fillMaxSize(),
@@ -153,7 +161,7 @@ fun HomeScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = "SaveBox",
                             style = MaterialTheme.typography.headlineLarge,
@@ -167,26 +175,49 @@ fun HomeScreen(
                         )
                     }
 
-                    IconButton(
-                        onClick = onOpenQueue,
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f))
-                            .testTag("home_queue_button")
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        BadgedBox(
-                            badge = {
-                                if (activeQueueCount > 0) {
-                                    Badge { Text("$activeQueueCount") }
-                                }
+                        FilterChip(
+                            selected = passRemainingMinutes > 0L,
+                            onClick = { viewModel.openDownloadPassAd() },
+                            label = {
+                                Text(
+                                    text = if (passRemainingMinutes > 0L) "${passRemainingMinutes}m Pass" else "Unlock Pass",
+                                    style = MaterialTheme.typography.labelSmall
+                                )
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Filled.Timer,
+                                    contentDescription = "Download Pass",
+                                    modifier = Modifier.size(15.dp)
+                                )
                             }
+                        )
+
+                        IconButton(
+                            onClick = onOpenQueue,
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f))
+                                .testTag("home_queue_button")
                         ) {
-                            Icon(
-                                imageVector = Icons.Filled.Download,
-                                contentDescription = "Download Queue",
-                                tint = MaterialTheme.colorScheme.primary
-                            )
+                            BadgedBox(
+                                badge = {
+                                    if (activeQueueCount > 0) {
+                                        Badge { Text("$activeQueueCount") }
+                                    }
+                                }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Download,
+                                    contentDescription = "Download Queue",
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
                         }
                     }
                 }
@@ -397,7 +428,7 @@ fun HomeScreen(
                         availableFolders = listOf("Auto by Type") + viewModel.getStorageBreakdownFolders(),
                         onDismiss = { viewModel.dismissFetchedMedia() },
                         onStartDownload = { format, customTitle, folder ->
-                            viewModel.startDownload(fetchedState.media, format, customTitle, folder)
+                            viewModel.requestDownloadWithAd(fetchedState.media, format, customTitle, folder, alsoSaveCoverArt = true)
                         }
                     )
                 }
@@ -432,6 +463,26 @@ fun HomeScreen(
                 }
             }
 
+            // Active Downloads with Thumbnail Circular Progress Overlay
+            if (queueDownloads.isNotEmpty()) {
+                item {
+                    SectionHeaderRow(
+                        title = "Active Downloads (${queueDownloads.size})",
+                        actionLabel = "Queue",
+                        onAction = onOpenQueue
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        items(queueDownloads, key = { "q_${it.id}" }) { dlItem ->
+                            CompactMediaCard(
+                                item = dlItem,
+                                onClick = onOpenQueue
+                            )
+                        }
+                    }
+                }
+            }
+
             // Quick Actions
             item {
                 Text(
@@ -459,11 +510,11 @@ fun HomeScreen(
                         onClick = onOpenBrowser
                     )
                     QuickActionTile(
-                        title = "Queue",
-                        subtitle = "$activeQueueCount active",
-                        icon = Icons.Filled.Download,
+                        title = "Files",
+                        subtitle = "DocumentFile",
+                        icon = Icons.Filled.FolderOpen,
                         modifier = Modifier.weight(1f),
-                        onClick = onOpenQueue
+                        onClick = onOpenFileManager
                     )
                     QuickActionTile(
                         title = "Privacy",
@@ -993,33 +1044,45 @@ private fun CompactMediaCard(
         contentPadding = 10.dp,
         onClick = onClick
     ) {
-        Box {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(92.dp)
+                .clip(RoundedCornerShape(14.dp))
+        ) {
             AsyncImage(
                 model = resolveHomeThumbModel(item.thumbnailUrl),
                 contentDescription = item.title,
                 placeholder = painterResource(id = R.drawable.img_album_placeholder),
                 error = painterResource(id = R.drawable.img_album_placeholder),
                 contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(92.dp)
-                    .clip(RoundedCornerShape(14.dp))
+                modifier = Modifier.fillMaxSize()
             )
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(6.dp)
-                    .size(30.dp)
-                    .clip(CircleShape)
-                    .background(Brush.linearGradient(listOf(ElectricCyan, AuroraViolet))),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.PlayArrow,
-                    contentDescription = "Play",
-                    tint = MaterialTheme.colorScheme.onPrimary,
-                    modifier = Modifier.size(18.dp)
+            if (item.status == "DOWNLOADING" || item.status == "QUEUED" || item.status == "PAUSED") {
+                ThumbnailDownloadProgressOverlay(
+                    progress = item.progressFraction,
+                    status = item.status,
+                    isIndeterminate = item.status == "DOWNLOADING" && item.fileSizeBytes <= 0L,
+                    modifier = Modifier.fillMaxSize(),
+                    ringSize = 44.dp
                 )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(6.dp)
+                        .size(30.dp)
+                        .clip(CircleShape)
+                        .background(Brush.linearGradient(listOf(ElectricCyan, AuroraViolet))),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.PlayArrow,
+                        contentDescription = "Play",
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
         }
         Spacer(modifier = Modifier.height(8.dp))

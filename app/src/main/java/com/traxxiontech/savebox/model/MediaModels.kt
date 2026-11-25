@@ -120,6 +120,19 @@ data class StorageFolderBreakdown(
     val sizeBytes: Long
 )
 
+data class DocumentFileEntry(
+    val uriString: String,
+    val name: String,
+    val isDirectory: Boolean,
+    val mimeType: String,
+    val sizeBytes: Long,
+    val lastModified: Long,
+    val folderLabel: String,
+    val localFilePath: String? = null,
+    val canWrite: Boolean = true,
+    val mediaType: MediaType? = null
+)
+
 @Serializable
 data class BackupPayload(
     val version: Int = 1,

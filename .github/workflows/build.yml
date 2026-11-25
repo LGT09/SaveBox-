@@ -1,4 +1,4 @@
-name: Build SaveBox APKs
+name: Build SaveBox Packages (Debug APK, Release APK & Play Store AAB)
 
 on:
   push:
@@ -24,10 +24,13 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Build Debug and Release APKs
-        run: ./gradlew assembleDebug assembleRelease
+      - name: Run Unit Tests
+        run: ./gradlew :app:testDebugUnitTest
+
+      - name: Build Debug APK, Release APK & Play Store Bundle (AAB)
+        run: ./gradlew assembleDebug assembleRelease bundleRelease
         env:
-          KEYSTORE_PATH: ${{ github.workspace }}/debug.keystore
+          KEYSTORE_PATH: ${{ github.workspace }}/my-upload-key.jks
           STORE_PASSWORD: android
           KEY_PASSWORD: android
 
@@ -37,8 +40,14 @@ jobs:
           name: debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
 
-      - name: Upload Release APK
+      - name: Upload Release Signed APK
         uses: actions/upload-artifact@v4
         with:
-          name: release-apk
-          path: app/build/outputs/apk/release/app-release-unsigned.apk
+          name: release-signed-apk
+          path: app/build/outputs/apk/release/app-release.apk
+
+      - name: Upload Play Store Release Bundle (AAB)
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-playstore-aab
+          path: app/build/outputs/bundle/release/app-release.aab

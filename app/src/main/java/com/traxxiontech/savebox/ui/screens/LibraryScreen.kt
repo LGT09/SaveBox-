@@ -41,13 +41,14 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
@@ -95,6 +96,7 @@ import com.traxxiontech.savebox.model.SortOption
 import com.traxxiontech.savebox.ui.components.AdBannerView
 import com.traxxiontech.savebox.ui.components.FormatUtils
 import com.traxxiontech.savebox.ui.components.GlassCard
+import com.traxxiontech.savebox.ui.components.ThumbnailDownloadProgressOverlay
 import com.traxxiontech.savebox.ui.theme.EmeraldMint
 import com.traxxiontech.savebox.ui.viewmodel.MainViewModel
 import java.io.File
@@ -102,10 +104,13 @@ import java.io.File
 @Composable
 fun LibraryScreen(
     viewModel: MainViewModel,
-    onPlayMedia: (DownloadEntity) -> Unit
+    onPlayMedia: (DownloadEntity) -> Unit,
+    onOpenFileManager: () -> Unit = {}
 ) {
     val items by viewModel.filteredLibraryItems.collectAsStateWithLifecycle()
+    val queueDownloads by viewModel.queueDownloads.collectAsStateWithLifecycle()
     val allCompleted by viewModel.completedDownloads.collectAsStateWithLifecycle()
+    val favoriteEntries by viewModel.favoriteEntries.collectAsStateWithLifecycle()
     val searchQuery by viewModel.librarySearchQuery.collectAsStateWithLifecycle()
     val filter by viewModel.libraryFilter.collectAsStateWithLifecycle()
     val sort by viewModel.librarySort.collectAsStateWithLifecycle()
@@ -113,6 +118,15 @@ fun LibraryScreen(
     val isGridView by viewModel.isLibraryGridView.collectAsStateWithLifecycle()
     val playlists by viewModel.playlists.collectAsStateWithLifecycle()
     val isScanning by viewModel.isScanningDeviceMedia.collectAsStateWithLifecycle()
+
+    val displayItems = remember(items, queueDownloads, filter, searchQuery) {
+        val activeItems = if (filter == LibraryFilter.ALL && searchQuery.isBlank()) {
+            queueDownloads.filter { it.status == "DOWNLOADING" || it.status == "QUEUED" || it.status == "PAUSED" }
+        } else {
+            emptyList()
+        }
+        activeItems + items
+    }
 
     val context = LocalContext.current
     var sortMenuExpanded by remember { mutableStateOf(false) }
@@ -208,6 +222,13 @@ fun LibraryScreen(
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = onOpenFileManager,
+                        modifier = Modifier.testTag("library_file_manager_button")
+                    ) {
+                        Icon(Icons.Filled.FolderOpen, contentDescription = "Open File Manager")
+                    }
+
                     IconButton(
                         onClick = { viewModel.scanDeviceMedia(silent = false) },
                         enabled = !isScanning,
@@ -334,6 +355,7 @@ fun LibraryScreen(
                         LibraryFilter.IMAGES -> " ($photoCount)"
                         LibraryFilter.VIDEOS -> " ($videoCount)"
                         LibraryFilter.MUSIC -> " ($songCount)"
+                        LibraryFilter.FAVORITES -> if (favoriteEntries.isNotEmpty()) " (${favoriteEntries.size})" else ""
                         else -> ""
                     }
                     FilterChip(
@@ -387,7 +409,7 @@ fun LibraryScreen(
                     onDeletePlaylist = { viewModel.deletePlaylist(it) },
                     onCreatePlaylist = { showCreatePlaylistDialog = true }
                 )
-            } else if (items.isEmpty()) {
+            } else if (displayItems.isEmpty()) {
                 GlassCard(cornerRadius = 24.dp, contentPadding = 24.dp) {
                     Column(
                         modifier = Modifier.fillMaxWidth(),
@@ -415,10 +437,12 @@ fun LibraryScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    items(items, key = { it.id }) { item ->
+                    items(displayItems, key = { it.id }) { item ->
                         LibraryGridCard(
                             item = item,
-                            onPlay = { onPlayMedia(item) },
+                            onPlay = {
+                                if (item.status == "COMPLETED") onPlayMedia(item)
+                            },
                             onToggleFavorite = { viewModel.toggleFavorite(item) },
                             onRename = { renameTarget = item },
                             onAddToPlaylist = { playlistPickerTarget = item },
@@ -433,10 +457,12 @@ fun LibraryScreen(
                     contentPadding = PaddingValues(bottom = 130.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    items(items, key = { it.id }) { item ->
+                    items(displayItems, key = { it.id }) { item ->
                         LibraryListCard(
                             item = item,
-                            onPlay = { onPlayMedia(item) },
+                            onPlay = {
+                                if (item.status == "COMPLETED") onPlayMedia(item)
+                            },
                             onToggleFavorite = { viewModel.toggleFavorite(item) },
                             onRename = { renameTarget = item },
                             onAddToPlaylist = { playlistPickerTarget = item },
@@ -593,7 +619,7 @@ private fun PlaylistsSection(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Icon(Icons.Filled.QueueMusic, contentDescription = null, modifier = Modifier.size(40.dp))
+                Icon(Icons.AutoMirrored.Filled.QueueMusic, contentDescription = null, modifier = Modifier.size(40.dp))
                 Spacer(modifier = Modifier.height(8.dp))
                 Text("No playlists yet", style = MaterialTheme.typography.titleMedium)
                 Text(
@@ -682,17 +708,26 @@ private fun LibraryGridCard(
     }
 
     GlassCard(cornerRadius = 20.dp, contentPadding = 10.dp, onClick = onPlay) {
-        Box {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(118.dp)
+                .clip(RoundedCornerShape(14.dp))
+        ) {
             AsyncImage(
                 model = coverModel,
                 contentDescription = item.title,
                 placeholder = painterResource(id = R.drawable.img_album_placeholder),
                 error = painterResource(id = R.drawable.img_album_placeholder),
                 contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(118.dp)
-                    .clip(RoundedCornerShape(14.dp))
+                modifier = Modifier.fillMaxSize()
+            )
+            ThumbnailDownloadProgressOverlay(
+                progress = item.progressFraction,
+                status = item.status,
+                isIndeterminate = item.status == "DOWNLOADING" && item.fileSizeBytes <= 0L,
+                modifier = Modifier.fillMaxSize(),
+                ringSize = 48.dp
             )
 
             Surface(
@@ -818,16 +853,27 @@ private fun LibraryListCard(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            AsyncImage(
-                model = coverModel,
-                contentDescription = item.title,
-                placeholder = painterResource(id = R.drawable.img_album_placeholder),
-                error = painterResource(id = R.drawable.img_album_placeholder),
-                contentScale = ContentScale.Crop,
+            Box(
                 modifier = Modifier
                     .size(56.dp)
                     .clip(RoundedCornerShape(12.dp))
-            )
+            ) {
+                AsyncImage(
+                    model = coverModel,
+                    contentDescription = item.title,
+                    placeholder = painterResource(id = R.drawable.img_album_placeholder),
+                    error = painterResource(id = R.drawable.img_album_placeholder),
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+                ThumbnailDownloadProgressOverlay(
+                    progress = item.progressFraction,
+                    status = item.status,
+                    isIndeterminate = item.status == "DOWNLOADING" && item.fileSizeBytes <= 0L,
+                    modifier = Modifier.fillMaxSize(),
+                    ringSize = 38.dp
+                )
+            }
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -895,7 +941,7 @@ private fun MediaItemMenu(
         )
         DropdownMenuItem(
             text = { Text("Add to Audio Queue") },
-            leadingIcon = { Icon(Icons.Filled.QueueMusic, contentDescription = null) },
+            leadingIcon = { Icon(Icons.AutoMirrored.Filled.QueueMusic, contentDescription = null) },
             onClick = { onDismiss(); onAddToQueue() }
         )
         DropdownMenuItem(

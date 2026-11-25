@@ -18,7 +18,9 @@ class SaveBoxApplication : Application() {
         super.onCreate()
         createNotificationChannels()
         runCatching {
-            com.google.android.gms.ads.MobileAds.initialize(this) {}
+            com.google.android.gms.ads.MobileAds.initialize(this) {
+                com.traxxiontech.savebox.ui.components.AppOpenAdManager.loadAd(this)
+            }
         }
     }
 
